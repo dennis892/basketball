@@ -6,19 +6,14 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
-"""
-A simplified and improved version of the basketball record keeping Streamlit app.
 
-This refactoring breaks the app into discrete, well‑named functions, reuses shared
-code and constants, and employs pathlib for file handling. It keeps all
-original functionality—record creation with optional photo uploads, per‑player
-statistics, multi‑player comparisons, batch editing of records, and data
-download—while presenting the UI more cleanly.
-"""
 
 # Define constants for the data file and image directory using pathlib
 DATA_FILE = Path("data.csv")
 IMAGE_DIR = Path("images")
+
+# Define a path for a team logo. Place your logo file at this path
+TEAM_LOGO_FILE = IMAGE_DIR / "team_logo.png"
 
 # Ensure the image directory exists; if the data file is missing create an empty CSV
 IMAGE_DIR.mkdir(exist_ok=True)
@@ -252,7 +247,19 @@ def main() -> None:
     st.set_page_config(
         page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
     )
-    st.title("🏀 籃球比賽紀錄系統")
+    # Display team logo (if available) alongside the title at the top of the page
+    if TEAM_LOGO_FILE.exists():
+        logo_col, title_col = st.columns([1, 8])
+        with logo_col:
+            # Display the logo with a fixed width
+            st.image(str(TEAM_LOGO_FILE), width=60)
+        with title_col:
+            st.markdown(
+                "<h1 style='padding-left: 0.5rem;'>🏀 籃球比賽紀錄系統</h1>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.title("🏀 籃球比賽紀錄系統")
 
     # Sidebar for navigation
     st.sidebar.title("功能選單")
