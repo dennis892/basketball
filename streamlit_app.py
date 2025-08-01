@@ -243,18 +243,37 @@ def download_data_section() -> None:
 
 def main() -> None:
     """
-    The primary entry point for the Streamlit app. Responsible for
-    orchestrating each UI section and refreshing data after new records
-    are added or edits are saved.
+    The primary entry point for the Streamlit app. Provides a sidebar menu
+    for navigating between sections (add records, single-player stats,
+    multi-player trend comparison, batch editing, and data backup).
+    Each page loads the latest data when displayed.
     """
-    st.title("🏀 籃球比賽紀錄系統 App")
-    add_record_section()
-    # Reload data after potentially adding new records
+    # Configure the page (title, icon, and layout)
+    st.set_page_config(
+        page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
+    )
+    st.title("🏀 籃球比賽紀錄系統")
+
+    # Sidebar for navigation
+    st.sidebar.title("功能選單")
+    page = st.sidebar.radio(
+        "選擇功能", ("新增紀錄", "單人統計", "趨勢比較", "批次修改", "備份資料")
+    )
+
+    # Always work with the most up‑to‑date data
     df = load_data()
-    player_statistics_section(df)
-    compare_players_section(df)
-    edit_records_section(df)
-    download_data_section()
+
+    # Render the appropriate section based on user selection
+    if page == "新增紀錄":
+        add_record_section()
+    elif page == "單人統計":
+        player_statistics_section(df)
+    elif page == "趨勢比較":
+        compare_players_section(df)
+    elif page == "批次修改":
+        edit_records_section(df)
+    elif page == "備份資料":
+        download_data_section()
 
 
 if __name__ == "__main__":
