@@ -178,22 +178,26 @@ def compare_players_section(df: pd.DataFrame) -> None:
     if df["球員"].nunique() < 2:
         return
 
-    st.header("📊 多人命中率比較")
+    st.header("📊 多人命中率比較（趨勢圖）")
     players = sorted(df["球員"].unique())
     selected_players = st.multiselect("選擇球員進行比較：", players)
 
     if selected_players:
-        compare_df = df[df["球員"].isin(selected_players)]
-        avg_df = compare_df.groupby("球員")["命中率"].mean().reset_index()
-        # Create a bar chart with axis titles
+        # Prepare data for a multi-line trend chart across selected players
+        chart_df = df[df["球員"].isin(selected_players)][["日期", "命中率", "球員"]].copy()
+        chart_df["日期"] = pd.to_datetime(chart_df["日期"])
+        chart_df = chart_df.sort_values("日期")
+        # Draw a line for each player with a distinct color and tooltips
         chart = (
-            alt.Chart(avg_df)
-            .mark_bar()
+            alt.Chart(chart_df)
+            .mark_line(point=True)
             .encode(
-                x=alt.X("球員:N", title="球員"),
-                y=alt.Y("命中率:Q", title="平均命中率 (%)"),
-                color="球員:N",
+                x=alt.X("日期:T", title="日期"),
+                y=alt.Y("命中率:Q", title="命中率 (%)"),
+                color=alt.Color("球員:N", title="球員"),
+                tooltip=["日期:T", "球員:N", "命中率:Q"],
             )
+            .properties(width=600)
         )
         st.altair_chart(chart, use_container_width=True)
 
