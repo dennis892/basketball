@@ -6,15 +6,6 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
-"""
-A simplified and improved version of the basketball record keeping Streamlit app.
-
-This refactoring breaks the app into discrete, well‑named functions, reuses shared
-code and constants, and employs pathlib for file handling. It keeps all
-original functionality—record creation with optional photo uploads, per‑player
-statistics, multi‑player comparisons, batch editing of records, and data
-download—while presenting the UI more cleanly.
-"""
 
 # Define constants for the data file and image directory using pathlib
 DATA_FILE = Path("data.csv")
@@ -183,7 +174,7 @@ def add_record_section() -> None:
     computes the accuracy, saves the new record, and optionally writes
     the uploaded player image to disk.
     """
-    st.header("📥 新增紀錄")
+    st.header("新增紀錄")
     players = load_players()
     if not players:
         st.warning("尚未有球員登錄，請先到『球員登錄』頁面登錄球員。")
@@ -220,7 +211,7 @@ def add_record_section() -> None:
                 df = load_data()
                 df = pd.concat([df, pd.DataFrame([new_record])], ignore_index=True)
                 save_data(df)
-                st.success("✅ 紀錄新增成功！")
+                st.success("紀錄新增成功！")
 
 
 def player_statistics_section(df: pd.DataFrame) -> None:
@@ -235,7 +226,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     if df.empty:
         return
 
-    st.header("📊 單人統計")
+    st.header("球員數據")
     players = sorted(df["球員"].unique())
     selected_player = st.selectbox("選擇球員：", players)
     player_df = df[df["球員"] == selected_player]
@@ -293,7 +284,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         )
         .properties(width=600)
     )
-    st.subheader("📈 命中率趨勢圖 (以日期為單位)")
+    st.subheader("命中率趨勢圖")
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -309,7 +300,7 @@ def compare_players_section(df: pd.DataFrame) -> None:
     if df["球員"].nunique() < 2:
         return
 
-    st.header("📊 多人命中率比較（趨勢圖）")
+    st.header("命中率比較")
     players = sorted(df["球員"].unique())
     selected_players = st.multiselect("選擇球員進行比較：", players)
 
@@ -346,7 +337,7 @@ def edit_records_section(df: pd.DataFrame) -> None:
     Args:
         df (pd.DataFrame): The full record DataFrame.
     """
-    st.header("✏️ 批次修改紀錄")
+    st.header("修改紀錄")
     if df.empty:
         st.info("沒有紀錄可修改")
         return
@@ -363,7 +354,7 @@ def edit_records_section(df: pd.DataFrame) -> None:
         editable_df, num_rows="dynamic", use_container_width=True, key="editor_records"
     )
 
-    if st.button("💾 儲存全部修改"):
+    if st.button("儲存全部修改"):
         # Recalculate the accuracy for each row in the edited subset
         edited_df["命中率"] = edited_df.apply(
             lambda r: calc_accuracy(r["投籃數"], r["命中數"]), axis=1
@@ -378,7 +369,7 @@ def edit_records_section(df: pd.DataFrame) -> None:
         st.success("✅ 所有修改已儲存")
 
     # --- Player management: edit basic information ---
-    st.subheader("🔧 修改球員基本資料")
+    st.subheader("修改球員基本資料")
     players_df = load_players_df()
     if not players_df.empty:
         edit_name = st.selectbox(
@@ -466,7 +457,7 @@ def edit_records_section(df: pd.DataFrame) -> None:
         st.write("尚未有球員登錄。")
 
     # --- Player management: remove players ---
-    st.subheader("🗑️ 移除球員")
+    st.subheader("移除球員")
     players_df = load_players_df()
     if not players_df.empty:
         del_names = st.multiselect(
@@ -491,7 +482,7 @@ def download_data_section() -> None:
     """
     Provide a button for users to download the current CSV data.
     """
-    st.header("📁 備份 / 下載資料")
+    st.header("下載資料")
     with open(DATA_FILE, "rb") as f:
         st.download_button(
             "⬇️ 下載 CSV 備份", f, file_name="basketball_data.csv", mime="text/csv"
@@ -505,7 +496,7 @@ def player_management_section() -> None:
     and remove existing players. Player details are stored in a CSV file
     and photos are saved in the images directory.
     """
-    st.header("👤 球員登錄")
+    st.header("球員登錄")
 
     # Form to add a new player
     st.subheader("新增球員")
@@ -681,7 +672,7 @@ def main() -> None:
     """
     # Configure the page (title, icon, and layout)
     st.set_page_config(
-        page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
+        page_title="籃球比賽紀錄系統"
     )
     # Display team logo (if available) alongside the title at the top of the page
     if TEAM_LOGO_FILE.exists():
@@ -691,11 +682,11 @@ def main() -> None:
             st.image(str(TEAM_LOGO_FILE), width=60)
         with title_col:
             st.markdown(
-                "<h1 style='padding-left: 0.5rem;'>🏀 籃球比賽紀錄系統</h1>",
+                "<h1 style='padding-left: 0.5rem;'>籃球比賽紀錄系統</h1>",
                 unsafe_allow_html=True,
             )
     else:
-        st.title("🏀 籃球比賽紀錄系統")
+        st.title("籃球比賽紀錄系統")
 
     # Sidebar for navigation
     st.sidebar.title("功能選單")
@@ -704,9 +695,9 @@ def main() -> None:
         (
             "球員登錄",  # put player registration first
             "新增紀錄",
-            "單人統計",
-            "趨勢比較",
-            "批次修改",
+            "球員紀錄",
+            "球員比較",
+            "資料修改",
             "備份資料",
         ),
     )
@@ -717,11 +708,11 @@ def main() -> None:
     # Render the appropriate section based on user selection
     if page == "新增紀錄":
         add_record_section()
-    elif page == "單人統計":
+    elif page == "球員紀錄":
         player_statistics_section(df)
-    elif page == "趨勢比較":
+    elif page == "球員比較":
         compare_players_section(df)
-    elif page == "批次修改":
+    elif page == "資料修改":
         edit_records_section(df)
     elif page == "備份資料":
         download_data_section()
