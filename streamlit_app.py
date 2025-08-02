@@ -421,11 +421,38 @@ def player_management_section() -> None:
                 default_birthday = date.fromisoformat(str(current_row["生日"])) if str(current_row["生日"]) else date.today()
             except Exception:
                 default_birthday = date.today()
-            default_age = int(current_row["年紀"]) if str(current_row["年紀"]).strip() else 0
-            default_height = float(current_row["身高"]) if str(current_row["身高"]).strip() else 0.0
-            default_weight = float(current_row["體重"]) if str(current_row["體重"]).strip() else 0.0
+            # Safely compute default values; treat NaN or empty strings as missing
+            if pd.notna(current_row["年紀"]) and str(current_row["年紀"]).strip():
+                try:
+                    default_age = int(float(current_row["年紀"]))
+                except Exception:
+                    default_age = 0
+            else:
+                default_age = 0
+            if pd.notna(current_row["身高"]) and str(current_row["身高"]).strip():
+                try:
+                    default_height = float(current_row["身高"])
+                    if pd.isna(default_height):
+                        default_height = 0.0
+                except Exception:
+                    default_height = 0.0
+            else:
+                default_height = 0.0
+            if pd.notna(current_row["體重"]) and str(current_row["體重"]).strip():
+                try:
+                    default_weight = float(current_row["體重"])
+                    if pd.isna(default_weight):
+                        default_weight = 0.0
+                except Exception:
+                    default_weight = 0.0
+            else:
+                default_weight = 0.0
             gender_options = ["男", "女", "其他"]
-            default_gender = current_row["性別"] if str(current_row["性別"]).strip() in gender_options else gender_options[0]
+            # Determine default gender; handle NaN or unknown values
+            if pd.notna(current_row["性別"]) and str(current_row["性別"]).strip() in gender_options:
+                default_gender = str(current_row["性別"]).strip()
+            else:
+                default_gender = gender_options[0]
             default_gender_index = gender_options.index(default_gender) if default_gender in gender_options else 0
             with st.form("edit_player_form"):
                 st.markdown(f"**姓名：{edit_name}**")
