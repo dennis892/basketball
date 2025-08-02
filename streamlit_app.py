@@ -683,25 +683,14 @@ def main() -> None:
     st.set_page_config(
         page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
     )
-    # Display team logo (if available) alongside the title at the top of the page
-    if TEAM_LOGO_FILE.exists():
-        logo_col, title_col = st.columns([1, 8])
-        with logo_col:
-            # Display the logo with a fixed width
-            st.image(str(TEAM_LOGO_FILE), width=60)
-        with title_col:
-            st.markdown(
-                "<h1 style='padding-left: 0.5rem;'>🏀 籃球比賽紀錄系統</h1>",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.title("🏀 籃球比賽紀錄系統")
+    # Display the page title without a logo on the main page
+    st.title("🏀 籃球比賽紀錄系統")
 
     # Sidebar for navigation
     # Display logo at the top of the sidebar if available
     if TEAM_LOGO_FILE.exists():
-        # Show a slightly larger logo on the sidebar
-        st.sidebar.image(str(TEAM_LOGO_FILE), width=80)
+        # Display a larger logo on the sidebar
+        st.sidebar.image(str(TEAM_LOGO_FILE), width=160)
     st.sidebar.title("功能選單")
     page = st.sidebar.radio(
         "選擇功能",
