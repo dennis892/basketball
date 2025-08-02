@@ -690,7 +690,8 @@ def main() -> None:
         <style>
         /* Target labels within the sidebar to increase font size and weight */
         [data-testid="stSidebar"] label {
-            font-size: 1.5rem !important;
+            /* Increase sidebar text size to 40px and make it bold */
+            font-size: 40px !important;
             font-weight: 700 !important;
         }
         </style>
