@@ -691,15 +691,15 @@ def main() -> None:
     if TEAM_LOGO_FILE.exists():
         # Display the logo on the sidebar (scaled to 120 px width)
         st.sidebar.image(str(TEAM_LOGO_FILE), width=120)
-    st.sidebar.title("功能選單")
+    # Radio menu without extra labels
     page = st.sidebar.radio(
-        "選擇功能",
+        "",
         (
             "球員登錄",  # put player registration first
             "新增紀錄",
-            "單人統計",
-            "趨勢比較",
-            "批次修改",
+            "球員資訊",
+            "多人比較",
+            "登錄修改",
             "備份資料",
         ),
     )
@@ -710,11 +710,11 @@ def main() -> None:
     # Render the appropriate section based on user selection
     if page == "新增紀錄":
         add_record_section()
-    elif page == "單人統計":
+    elif page == "球員資訊":
         player_statistics_section(df)
-    elif page == "趨勢比較":
+    elif page == "多人比較":
         compare_players_section(df)
-    elif page == "批次修改":
+    elif page == "登錄修改":
         edit_records_section(df)
     elif page == "備份資料":
         download_data_section()
