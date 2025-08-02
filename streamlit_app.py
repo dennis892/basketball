@@ -393,11 +393,11 @@ def player_management_section() -> None:
         birthday = st.date_input(
             "生日",
             key="birthday",
-            # Restrict selection to today or earlier; no future birthdays
+            # Restrict selection to between 1925 and today
+            min_value=date(1925, 1, 1),
             max_value=date.today(),
         )
-        # Age input to allow manual age entry; will override computed age if provided
-        age_input = st.number_input("年紀 (可自動計算)", min_value=0, step=1, value=0)
+        # Remove manual age input; age will be computed automatically based on birthday
         height = st.number_input("身高 (cm)", min_value=0.0, step=1.0)
         gender = st.selectbox("性別", ["男", "女", "其他"])
         weight = st.number_input("體重 (kg)", min_value=0.0, step=1.0)
@@ -410,15 +410,15 @@ def player_management_section() -> None:
             elif name in get_player_names():
                 st.warning("此球員已登錄")
             else:
-                # Format birthday string and prepare other fields; compute age from input if provided
+                # Format birthday string and prepare other fields; age will be computed automatically
                 birthday_str = birthday.strftime("%Y-%m-%d")
-                age_str = str(int(age_input)) if age_input else ""
                 height_str = str(int(height)) if height else ""
                 weight_str = str(int(weight)) if weight else ""
+                # Pass an empty age to trigger automatic age computation in add_player_details
                 add_player_details(
                     name,
                     birthday=birthday_str,
-                    age=age_str,
+                    age="",
                     height=height_str,
                     gender=gender,
                     weight=weight_str,
@@ -483,9 +483,9 @@ def player_management_section() -> None:
                     "生日",
                     value=default_birthday,
                     key="edit_birthday",
+                    min_value=date(1925, 1, 1),
                     max_value=date.today(),
                 )
-                new_age = st.number_input("年紀", min_value=0, step=1, value=default_age, key="edit_age")
                 new_height = st.number_input(
                     "身高 (cm)", min_value=0.0, step=1.0, value=default_height, key="edit_height"
                 )
@@ -504,7 +504,12 @@ def player_management_section() -> None:
                     players_df.loc[players_df["球員"] == edit_name, "生日"] = new_birthday.strftime(
                         "%Y-%m-%d"
                     )
-                    players_df.loc[players_df["球員"] == edit_name, "年紀"] = str(int(new_age)) if new_age else ""
+                    # Compute age automatically from the updated birthday
+                    today_date = date.today()
+                    age_value = today_date.year - new_birthday.year - (
+                        (today_date.month, today_date.day) < (new_birthday.month, new_birthday.day)
+                    )
+                    players_df.loc[players_df["球員"] == edit_name, "年紀"] = str(age_value) if age_value else ""
                     players_df.loc[players_df["球員"] == edit_name, "身高"] = (
                         str(int(new_height)) if new_height else ""
                     )
