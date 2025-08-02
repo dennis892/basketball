@@ -715,6 +715,50 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    # Override the original dark theme with a light grey, high-tech theme. This CSS
+    # is injected after the initial theme to ensure that selectors defined here
+    # take precedence over earlier definitions. It introduces a light grey
+    # background, dark text, and modern Chinese/English fonts.
+    st.markdown(
+        f"""
+        <style>
+        /* Import fonts: Orbitron for English and Noto Sans TC for Chinese (tech aesthetic) */
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        /* Light grey background and dark text for better readability */
+        html, body, .stApp {{
+            background-color: #f5f7fa;
+            color: #0a192f;
+            font-family: 'Noto Sans TC', 'Orbitron', sans-serif;
+        }}
+
+        /* Style the sidebar with a slightly darker grey and a blue accent border */
+        [data-testid="stSidebar"] {{
+            background-color: #e1e5ee !important;
+            border-right: 2px solid #00BFFF !important;
+        }}
+
+        /* Increase the sidebar menu text size and apply tech fonts and accent color */
+        [data-testid="stSidebar"] label {{
+            font-family: 'Noto Sans TC', 'Orbitron', sans-serif !important;
+            font-size: 40px !important;
+            font-weight: 700 !important;
+            letter-spacing: 1px;
+            color: #00BFFF !important;
+        }}
+
+        /* Input focus glow effect with accent color */
+        input:focus, textarea:focus, select:focus {{
+            border-color: #00BFFF !important;
+            box-shadow: 0 0 6px #00BFFF !important;
+            outline: none !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     # Display no title on the main page (title removed as requested)
 
     # Sidebar for navigation
