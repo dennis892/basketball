@@ -258,6 +258,24 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     st.write(f"總投籃：{total_shots}，命中：{total_made}")
     st.write(f"命中率：{accuracy:.2f}%，贏球率：{win_rate:.2f}%")
 
+    # Display player's basic information from the registered players file
+    players_df = load_players_df()
+    details_df = players_df[players_df["球員"] == selected_player]
+    if not details_df.empty:
+        info = details_df.iloc[0]
+        # Helper to normalize display values; handle NaN or empty strings
+        def display_value(val, suffix=""):
+            if pd.isna(val) or str(val).strip() == "":
+                return "未填寫"
+            return f"{val}{suffix}"
+        st.subheader("📋 球員基本資料")
+        st.write(f"姓名：{selected_player}")
+        st.write(f"生日：{display_value(info['生日'])}")
+        st.write(f"年紀：{display_value(info['年紀'])}")
+        st.write(f"身高：{display_value(info['身高'], ' cm')}")
+        st.write(f"性別：{display_value(info['性別'])}")
+        st.write(f"體重：{display_value(info['體重'], ' kg')}")
+
     # Prepare data for the line chart aggregated by date (ignoring hours)
     chart_data = (
         player_df.groupby("日期")["命中率"].mean().reset_index()
