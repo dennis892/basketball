@@ -20,13 +20,23 @@ download—while presenting the UI more cleanly.
 DATA_FILE = Path("data.csv")
 IMAGE_DIR = Path("images")
 
-# Path to store registered players. Each row contains a single column "球員".
+# Path to store registered players and their details.
 PLAYERS_FILE = Path("players.csv")
 
-# Ensure the players file exists
+# Define the columns for the players file
+PLAYERS_COLUMNS = ["球員", "生日", "年紀", "身高", "性別", "體重"]
+
+# Ensure the players file exists and has all required columns
 if not PLAYERS_FILE.exists():
-    players_df = pd.DataFrame(columns=["球員"])
-    players_df.to_csv(PLAYERS_FILE, index=False)
+    pd.DataFrame(columns=PLAYERS_COLUMNS).to_csv(PLAYERS_FILE, index=False)
+else:
+    # If the file exists but lacks columns, add them
+    existing_df = pd.read_csv(PLAYERS_FILE)
+    missing_cols = [col for col in PLAYERS_COLUMNS if col not in existing_df.columns]
+    if missing_cols:
+        for col in missing_cols:
+            existing_df[col] = ""
+        existing_df.to_csv(PLAYERS_FILE, index=False)
 
 # Define a path for a team logo. Place your logo file at this path
 TEAM_LOGO_FILE = IMAGE_DIR / "team_logo.png"
@@ -51,17 +61,32 @@ def load_data() -> pd.DataFrame:
 
 
 # Player management helpers
-def load_players() -> list:
+def load_players_df() -> pd.DataFrame:
     """
-    Load the registered players from the players CSV.
+    Load the registered players DataFrame from the players CSV.
 
     Returns:
-        list[str]: A list of player names.
+        pd.DataFrame: DataFrame containing player details.
     """
-    if not PLAYERS_FILE.exists():
-        return []
-    dfp = pd.read_csv(PLAYERS_FILE)
+    return pd.read_csv(PLAYERS_FILE)
+
+
+def get_player_names() -> list:
+    """
+    Get a list of all registered player names.
+
+    Returns:
+        list[str]: List of player names.
+    """
+    dfp = load_players_df()
     return dfp["球員"].dropna().astype(str).tolist()
+
+
+def load_players() -> list:
+    """
+    Alias for backward compatibility. Returns the list of player names.
+    """
+    return get_player_names()
 
 
 def add_player(name: str) -> None:
@@ -72,18 +97,58 @@ def add_player(name: str) -> None:
     Args:
         name (str): The player's name.
     """
+    # Deprecated: this function now accepts additional fields through add_player_details.
     name = name.strip()
     if not name:
         return
-    current_players = set(load_players())
+    current_players = set(get_player_names())
     if name in current_players:
         return
-    # Append the new player to the CSV
-    if PLAYERS_FILE.exists() and PLAYERS_FILE.stat().st_size > 0:
-        df_existing = pd.read_csv(PLAYERS_FILE)
-        df_new = pd.concat([df_existing, pd.DataFrame({"球員": [name]})], ignore_index=True)
-    else:
-        df_new = pd.DataFrame({"球員": [name]})
+    # Append a new player with empty details
+    df_existing = load_players_df()
+    new_record = {col: "" for col in PLAYERS_COLUMNS}
+    new_record["球員"] = name
+    df_new = pd.concat([df_existing, pd.DataFrame([new_record])], ignore_index=True)
+    df_new.to_csv(PLAYERS_FILE, index=False)
+
+
+def add_player_details(name: str, birthday: str = "", age: str = "", height: str = "",
+                       gender: str = "", weight: str = "") -> None:
+    """
+    Register a new player with full details, ensuring no duplicates.
+
+    Args:
+        name (str): Player's name.
+        birthday (str): Birthday in YYYY-MM-DD format.
+        age (str): Age (will be computed from birthday if empty).
+        height (str): Height in cm.
+        gender (str): Gender description.
+        weight (str): Weight in kg.
+    """
+    name = name.strip()
+    if not name:
+        return
+    current_players = set(get_player_names())
+    if name in current_players:
+        return
+    df_existing = load_players_df()
+    # If age is empty and birthday provided, compute age
+    if not age and birthday:
+        try:
+            birth_date = pd.to_datetime(birthday)
+            today = pd.to_datetime(date.today())
+            age = str(today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)))
+        except Exception:
+            age = ""
+    new_record = {
+        "球員": name,
+        "生日": birthday,
+        "年紀": age,
+        "身高": height,
+        "性別": gender,
+        "體重": weight,
+    }
+    df_new = pd.concat([df_existing, pd.DataFrame([new_record])], ignore_index=True)
     df_new.to_csv(PLAYERS_FILE, index=False)
 
 
@@ -296,31 +361,67 @@ def download_data_section() -> None:
 
 def player_management_section() -> None:
     """
-    A section to manage players. Users can register new players and
-    optionally upload their headshots. Registered players are saved to
-    a separate CSV file, and the headshot will be stored in the images
-    directory with the player name as the filename.
+    A section to register and manage players. Users can add new players
+    with detailed information (photo, name, birthday, height, gender, weight)
+    and remove existing players. Player details are stored in a CSV file
+    and photos are saved in the images directory.
     """
-    st.header("👤 球員管理")
+    st.header("👤 球員登錄")
+
+    # Form to add a new player
     st.subheader("新增球員")
-    new_player = st.text_input("球員姓名", key="new_player").strip()
-    headshot = st.file_uploader("上傳頭像（可選）", type=["jpg", "jpeg", "png"], key="headshot")
-    if st.button("新增球員"):
-        if not new_player:
-            st.warning("請輸入球員姓名")
-        else:
-            if new_player in load_players():
+    with st.form("add_player_form"):
+        name = st.text_input("姓名").strip()
+        birthday = st.date_input("生日", key="birthday")
+        # Age input to allow manual age entry; will override computed age if provided
+        age_input = st.number_input("年紀 (可自動計算)", min_value=0, step=1, value=0)
+        height = st.number_input("身高 (cm)", min_value=0.0, step=1.0)
+        gender = st.selectbox("性別", ["男", "女", "其他"])
+        weight = st.number_input("體重 (kg)", min_value=0.0, step=1.0)
+        photo = st.file_uploader("上傳頭像（可選）", type=["jpg", "jpeg", "png"], key="player_photo")
+        submit_new = st.form_submit_button("新增球員")
+
+        if submit_new:
+            if not name:
+                st.warning("請輸入球員姓名")
+            elif name in get_player_names():
                 st.warning("此球員已登錄")
             else:
-                add_player(new_player)
-                if headshot is not None:
-                    img_path = IMAGE_DIR / f"{new_player}.jpg"
-                    img_path.write_bytes(headshot.read())
+                # Format birthday string and prepare other fields; compute age from input if provided
+                birthday_str = birthday.strftime("%Y-%m-%d")
+                age_str = str(int(age_input)) if age_input else ""
+                height_str = str(int(height)) if height else ""
+                weight_str = str(int(weight)) if weight else ""
+                add_player_details(
+                    name,
+                    birthday=birthday_str,
+                    age=age_str,
+                    height=height_str,
+                    gender=gender,
+                    weight=weight_str,
+                )
+                if photo is not None:
+                    img_path = IMAGE_DIR / f"{name}.jpg"
+                    img_path.write_bytes(photo.read())
                 st.success("✅ 成功新增球員！")
-    st.subheader("已登錄球員")
-    players = load_players()
-    if players:
-        st.write(players)
+
+    # Section to remove players
+    st.subheader("移除球員")
+    players_df = load_players_df()
+    if not players_df.empty:
+        names = players_df["球員"].dropna().tolist()
+        to_delete = st.multiselect("選擇要移除的球員", names, key="delete_players")
+        if st.button("移除選定球員"):
+            if to_delete:
+                # Remove selected players from the DataFrame
+                remaining_df = players_df[~players_df["球員"].isin(to_delete)].copy()
+                remaining_df.to_csv(PLAYERS_FILE, index=False)
+                # Remove headshot files for deleted players
+                for del_name in to_delete:
+                    img_path = IMAGE_DIR / f"{del_name}.jpg"
+                    if img_path.exists():
+                        img_path.unlink()
+                st.success("已移除選定的球員：" + ", ".join(to_delete))
     else:
         st.write("尚未有球員登錄。")
 
@@ -355,12 +456,12 @@ def main() -> None:
     page = st.sidebar.radio(
         "選擇功能",
         (
+            "球員登錄",  # put player registration first
             "新增紀錄",
             "單人統計",
             "趨勢比較",
             "批次修改",
             "備份資料",
-            "球員登錄",
         ),
     )
 
