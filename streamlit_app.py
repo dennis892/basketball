@@ -689,8 +689,8 @@ def main() -> None:
     # Sidebar for navigation
     # Display logo at the top of the sidebar if available
     if TEAM_LOGO_FILE.exists():
-        # Display a larger logo on the sidebar
-        st.sidebar.image(str(TEAM_LOGO_FILE), width=160)
+        # Display the logo on the sidebar (scaled to 120 px width)
+        st.sidebar.image(str(TEAM_LOGO_FILE), width=120)
     st.sidebar.title("功能選單")
     page = st.sidebar.radio(
         "選擇功能",
