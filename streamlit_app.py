@@ -6,15 +6,7 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
-"""
-A simplified and improved version of the basketball record keeping Streamlit app.
 
-This refactoring breaks the app into discrete, well‑named functions, reuses shared
-code and constants, and employs pathlib for file handling. It keeps all
-original functionality—record creation with optional photo uploads, per‑player
-statistics, multi‑player comparisons, batch editing of records, and data
-download—while presenting the UI more cleanly.
-"""
 
 # Define constants for the data file and image directory using pathlib
 DATA_FILE = Path("data.csv")
@@ -698,8 +690,7 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
-    # Display the page title without a logo on the main page
-    st.title("🏀 籃球比賽紀錄系統")
+    # Display no title on the main page (title removed as requested)
 
     # Sidebar for navigation
     # Display logo at the top of the sidebar if available
