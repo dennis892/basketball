@@ -193,12 +193,14 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     st.write(f"總投籃：{total_shots}，命中：{total_made}")
     st.write(f"命中率：{accuracy:.2f}%，贏球率：{win_rate:.2f}%")
 
-    # Prepare data for the line chart
-    chart_data = player_df[["日期", "命中率"]].copy()
+    # Prepare data for the line chart aggregated by date (ignoring hours)
+    chart_data = (
+        player_df.groupby("日期")["命中率"].mean().reset_index()
+    )
     chart_data["日期"] = pd.to_datetime(chart_data["日期"])
     chart_data = chart_data.sort_values("日期")
 
-    # Create the line chart with explicit axis titles
+    # Create the line chart with explicit axis titles (daily granularity)
     chart = (
         alt.Chart(chart_data)
         .mark_line(point=True)
@@ -208,7 +210,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         )
         .properties(width=600)
     )
-    st.subheader("📈 命中率趨勢圖")
+    st.subheader("📈 命中率趨勢圖 (以日期為單位)")
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -229,8 +231,13 @@ def compare_players_section(df: pd.DataFrame) -> None:
     selected_players = st.multiselect("選擇球員進行比較：", players)
 
     if selected_players:
-        # Prepare data for a multi-line trend chart across selected players
-        chart_df = df[df["球員"].isin(selected_players)][["日期", "命中率", "球員"]].copy()
+        # Prepare data for a multi-line trend chart aggregated by date for each player
+        chart_df = (
+            df[df["球員"].isin(selected_players)]
+            .groupby(["球員", "日期"])["命中率"]
+            .mean()
+            .reset_index()
+        )
         chart_df["日期"] = pd.to_datetime(chart_df["日期"])
         chart_df = chart_df.sort_values("日期")
         # Draw a line for each player with a distinct color and tooltips
