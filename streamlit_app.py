@@ -6,11 +6,27 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
+"""
+A simplified and improved version of the basketball record keeping Streamlit app.
 
+This refactoring breaks the app into discrete, well‑named functions, reuses shared
+code and constants, and employs pathlib for file handling. It keeps all
+original functionality—record creation with optional photo uploads, per‑player
+statistics, multi‑player comparisons, batch editing of records, and data
+download—while presenting the UI more cleanly.
+"""
 
 # Define constants for the data file and image directory using pathlib
 DATA_FILE = Path("data.csv")
 IMAGE_DIR = Path("images")
+
+# Path to store registered players. Each row contains a single column "球員".
+PLAYERS_FILE = Path("players.csv")
+
+# Ensure the players file exists
+if not PLAYERS_FILE.exists():
+    players_df = pd.DataFrame(columns=["球員"])
+    players_df.to_csv(PLAYERS_FILE, index=False)
 
 # Define a path for a team logo. Place your logo file at this path
 TEAM_LOGO_FILE = IMAGE_DIR / "team_logo.png"
@@ -32,6 +48,43 @@ def load_data() -> pd.DataFrame:
         pd.DataFrame: The current basketball records.
     """
     return pd.read_csv(DATA_FILE)
+
+
+# Player management helpers
+def load_players() -> list:
+    """
+    Load the registered players from the players CSV.
+
+    Returns:
+        list[str]: A list of player names.
+    """
+    if not PLAYERS_FILE.exists():
+        return []
+    dfp = pd.read_csv(PLAYERS_FILE)
+    return dfp["球員"].dropna().astype(str).tolist()
+
+
+def add_player(name: str) -> None:
+    """
+    Register a new player by appending their name to the players CSV,
+    ensuring no duplicates.
+
+    Args:
+        name (str): The player's name.
+    """
+    name = name.strip()
+    if not name:
+        return
+    current_players = set(load_players())
+    if name in current_players:
+        return
+    # Append the new player to the CSV
+    if PLAYERS_FILE.exists() and PLAYERS_FILE.stat().st_size > 0:
+        df_existing = pd.read_csv(PLAYERS_FILE)
+        df_new = pd.concat([df_existing, pd.DataFrame({"球員": [name]})], ignore_index=True)
+    else:
+        df_new = pd.DataFrame({"球員": [name]})
+    df_new.to_csv(PLAYERS_FILE, index=False)
 
 
 def save_data(df: pd.DataFrame) -> None:
@@ -66,23 +119,25 @@ def add_record_section() -> None:
     the uploaded player image to disk.
     """
     st.header("📥 新增紀錄")
+    players = load_players()
+    if not players:
+        st.warning("尚未有球員登錄，請先到『球員登錄』頁面登錄球員。")
+        return
     with st.form("add_record"):
         col1, col2 = st.columns(2)
         with col1:
             game_date = st.date_input("比賽日期", value=date.today())
         with col2:
-            player = st.text_input("球員姓名").strip()
+            # Select from registered players
+            player = st.selectbox("選擇球員", players)
         shots = st.number_input("投籃次數", min_value=0, step=1)
         made = st.number_input("命中次數", min_value=0, step=1)
         win = st.selectbox("這場是否贏球？", ["✅ 是", "❌ 否"])
-        uploaded_file = st.file_uploader("上傳球員頭像（可選）", type=["jpg", "jpeg", "png"])
         submit = st.form_submit_button("新增紀錄")
 
         if submit:
             # Validate user inputs
-            if not player:
-                st.warning("請輸入球員姓名")
-            elif made > shots:
+            if made > shots:
                 st.warning("命中不能大於投籃")
             else:
                 # Compute accuracy and build the new record
@@ -100,10 +155,6 @@ def add_record_section() -> None:
                 df = load_data()
                 df = pd.concat([df, pd.DataFrame([new_record])], ignore_index=True)
                 save_data(df)
-                # Save the uploaded image if provided
-                if uploaded_file:
-                    image_path = IMAGE_DIR / f"{player}.jpg"
-                    image_path.write_bytes(uploaded_file.read())
                 st.success("✅ 紀錄新增成功！")
 
 
@@ -236,6 +287,37 @@ def download_data_section() -> None:
         )
 
 
+def player_management_section() -> None:
+    """
+    A section to manage players. Users can register new players and
+    optionally upload their headshots. Registered players are saved to
+    a separate CSV file, and the headshot will be stored in the images
+    directory with the player name as the filename.
+    """
+    st.header("👤 球員管理")
+    st.subheader("新增球員")
+    new_player = st.text_input("球員姓名", key="new_player").strip()
+    headshot = st.file_uploader("上傳頭像（可選）", type=["jpg", "jpeg", "png"], key="headshot")
+    if st.button("新增球員"):
+        if not new_player:
+            st.warning("請輸入球員姓名")
+        else:
+            if new_player in load_players():
+                st.warning("此球員已登錄")
+            else:
+                add_player(new_player)
+                if headshot is not None:
+                    img_path = IMAGE_DIR / f"{new_player}.jpg"
+                    img_path.write_bytes(headshot.read())
+                st.success("✅ 成功新增球員！")
+    st.subheader("已登錄球員")
+    players = load_players()
+    if players:
+        st.write(players)
+    else:
+        st.write("尚未有球員登錄。")
+
+
 def main() -> None:
     """
     The primary entry point for the Streamlit app. Provides a sidebar menu
@@ -264,7 +346,15 @@ def main() -> None:
     # Sidebar for navigation
     st.sidebar.title("功能選單")
     page = st.sidebar.radio(
-        "選擇功能", ("新增紀錄", "單人統計", "趨勢比較", "批次修改", "備份資料")
+        "選擇功能",
+        (
+            "新增紀錄",
+            "單人統計",
+            "趨勢比較",
+            "批次修改",
+            "備份資料",
+            "球員登錄",
+        ),
     )
 
     # Always work with the most up‑to‑date data
@@ -281,6 +371,8 @@ def main() -> None:
         edit_records_section(df)
     elif page == "備份資料":
         download_data_section()
+    elif page == "球員登錄":
+        player_management_section()
 
 
 if __name__ == "__main__":
