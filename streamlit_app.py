@@ -698,6 +698,10 @@ def main() -> None:
         st.title("🏀 籃球比賽紀錄系統")
 
     # Sidebar for navigation
+    # Display logo at the top of the sidebar if available
+    if TEAM_LOGO_FILE.exists():
+        # Show a slightly larger logo on the sidebar
+        st.sidebar.image(str(TEAM_LOGO_FILE), width=80)
     st.sidebar.title("功能選單")
     page = st.sidebar.radio(
         "選擇功能",
