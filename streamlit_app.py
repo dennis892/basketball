@@ -351,18 +351,30 @@ def edit_records_section(df: pd.DataFrame) -> None:
         st.info("沒有紀錄可修改")
         return
 
-    # We drop the calculated "命中率" column for editing to avoid user confusion.
-    editable_df = df.drop(columns=["命中率"]).copy()
+    # Allow the user to select a specific player to edit records for
+    players = sorted(df["球員"].unique())
+    selected_player = st.selectbox("選擇球員進行修改：", players)
+    # Filter records for the selected player
+    df_filtered = df[df["球員"] == selected_player] if selected_player else df
+
+    # Drop the calculated "命中率" column for editing to avoid user confusion.
+    editable_df = df_filtered.drop(columns=["命中率"]).copy()
     edited_df = st.data_editor(
-        editable_df, num_rows="dynamic", use_container_width=True, key="editor"
+        editable_df, num_rows="dynamic", use_container_width=True, key="editor_records"
     )
 
     if st.button("💾 儲存全部修改"):
-        # Recalculate the accuracy for each row
+        # Recalculate the accuracy for each row in the edited subset
         edited_df["命中率"] = edited_df.apply(
             lambda r: calc_accuracy(r["投籃數"], r["命中數"]), axis=1
         )
-        save_data(edited_df)
+        # Load the full data to update it
+        full_df = df.copy()
+        # Replace the rows corresponding to the edited player's records
+        for _, row in edited_df.iterrows():
+            full_df.loc[full_df["record_id"] == row["record_id"], full_df.columns] = row
+        # Save the updated full data
+        save_data(full_df)
         st.success("✅ 所有修改已儲存")
 
 
