@@ -676,16 +676,41 @@ def main() -> None:
         page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
     )
 
-    # Apply custom styling to enlarge and bold sidebar menu text
+    # Apply a dark, high-tech theme with a monochromatic blue accent
     st.markdown(
         """
         <style>
-        /* Target labels within the sidebar to increase font size and weight */
-        [data-testid="stSidebar"] label {
-            /* Increase sidebar text size to 40px and make it bold */
-            font-size: 40px !important;
-            font-weight: 700 !important;
+        /* Import a mechanical-style font (Orbitron) from Google Fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+        /* Set global background and text colors for a dark theme */
+        html, body, .stApp {
+            background-color: #0a192f;
+            color: #c8d4e3;
         }
+
+        /* Style the sidebar with a darker shade and a blue accent border */
+        [data-testid="stSidebar"] {
+            background-color: #112240 !important;
+            border-right: 2px solid #00BFFF !important;
+        }
+
+        /* Increase the sidebar menu text size, apply mechanical font and accent color */
+        [data-testid="stSidebar"] label {
+            font-family: 'Orbitron', sans-serif !important;
+            font-size: 32px !important;
+            font-weight: 600 !important;
+            letter-spacing: 1px;
+            color: #00BFFF !important;
+        }
+
+        /* Input focus glow effect with accent color */
+        input:focus, textarea:focus, select:focus {
+            border-color: #00BFFF !important;
+            box-shadow: 0 0 6px #00BFFF !important;
+            outline: none !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
