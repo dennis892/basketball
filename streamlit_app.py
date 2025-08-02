@@ -683,6 +683,20 @@ def main() -> None:
     st.set_page_config(
         page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
     )
+
+    # Apply custom styling to enlarge and bold sidebar menu text
+    st.markdown(
+        """
+        <style>
+        /* Target labels within the sidebar to increase font size and weight */
+        [data-testid="stSidebar"] label {
+            font-size: 1.5rem !important;
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     # Display the page title without a logo on the main page
     st.title("🏀 籃球比賽紀錄系統")
 
