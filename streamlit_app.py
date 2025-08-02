@@ -377,6 +377,115 @@ def edit_records_section(df: pd.DataFrame) -> None:
         save_data(full_df)
         st.success("✅ 所有修改已儲存")
 
+    # --- Player management: edit basic information ---
+    st.subheader("🔧 修改球員基本資料")
+    players_df = load_players_df()
+    if not players_df.empty:
+        edit_name = st.selectbox(
+            "選擇要修改的球員", players_df["球員"].dropna().astype(str).tolist(), key="edit_player_select_batch"
+        )
+        if edit_name:
+            # Retrieve the player's current details
+            current_row = players_df[players_df["球員"] == edit_name].iloc[0]
+            # Prepare default values for the form
+            try:
+                default_birthday = date.fromisoformat(str(current_row["生日"])) if str(current_row["生日"]) else date.today()
+            except Exception:
+                default_birthday = date.today()
+            # Safely compute default values; treat NaN or empty strings as missing
+            if pd.notna(current_row["身高"]) and str(current_row["身高"]).strip():
+                try:
+                    default_height = float(current_row["身高"])
+                    if pd.isna(default_height):
+                        default_height = 0.0
+                except Exception:
+                    default_height = 0.0
+            else:
+                default_height = 0.0
+            if pd.notna(current_row["體重"]) and str(current_row["體重"]).strip():
+                try:
+                    default_weight = float(current_row["體重"])
+                    if pd.isna(default_weight):
+                        default_weight = 0.0
+                except Exception:
+                    default_weight = 0.0
+            else:
+                default_weight = 0.0
+            gender_options = ["男", "女", "其他"]
+            if pd.notna(current_row["性別"]) and str(current_row["性別"]).strip() in gender_options:
+                default_gender = str(current_row["性別"]).strip()
+            else:
+                default_gender = gender_options[0]
+            default_gender_index = gender_options.index(default_gender) if default_gender in gender_options else 0
+            with st.form("edit_player_form_batch"):
+                st.markdown(f"**姓名：{edit_name}**")
+                new_birthday = st.date_input(
+                    "生日",
+                    value=default_birthday,
+                    key="edit_birthday_batch",
+                    min_value=date(1925, 1, 1),
+                    max_value=date.today(),
+                )
+                new_height = st.number_input(
+                    "身高 (cm)", min_value=0.0, step=1.0, value=default_height, key="edit_height_batch"
+                )
+                new_gender = st.selectbox(
+                    "性別", gender_options, index=default_gender_index, key="edit_gender_batch"
+                )
+                new_weight = st.number_input(
+                    "體重 (kg)", min_value=0.0, step=1.0, value=default_weight, key="edit_weight_batch"
+                )
+                new_photo = st.file_uploader(
+                    "更新頭像（可選）", type=["jpg", "jpeg", "png"], key="edit_player_photo_batch"
+                )
+                submit_edit = st.form_submit_button("保存球員修改")
+                if submit_edit:
+                    # Update the DataFrame with new values and compute age automatically
+                    players_df.loc[players_df["球員"] == edit_name, "生日"] = new_birthday.strftime(
+                        "%Y-%m-%d"
+                    )
+                    # Compute age based on birthday
+                    today_date = date.today()
+                    age_value = today_date.year - new_birthday.year - (
+                        (today_date.month, today_date.day) < (new_birthday.month, new_birthday.day)
+                    )
+                    players_df.loc[players_df["球員"] == edit_name, "年紀"] = str(age_value) if age_value else ""
+                    players_df.loc[players_df["球員"] == edit_name, "身高"] = (
+                        str(int(new_height)) if new_height else ""
+                    )
+                    players_df.loc[players_df["球員"] == edit_name, "性別"] = new_gender
+                    players_df.loc[players_df["球員"] == edit_name, "體重"] = (
+                        str(int(new_weight)) if new_weight else ""
+                    )
+                    players_df.to_csv(PLAYERS_FILE, index=False)
+                    if new_photo is not None:
+                        img_path = IMAGE_DIR / f"{edit_name}.jpg"
+                        img_path.write_bytes(new_photo.read())
+                    st.success("✅ 球員資料已更新！")
+    else:
+        st.write("尚未有球員登錄。")
+
+    # --- Player management: remove players ---
+    st.subheader("🗑️ 移除球員")
+    players_df = load_players_df()
+    if not players_df.empty:
+        del_names = st.multiselect(
+            "選擇要移除的球員", players_df["球員"].dropna().astype(str).tolist(), key="delete_players_batch"
+        )
+        if st.button("移除選定球員", key="delete_players_button_batch"):
+            if del_names:
+                # Remove selected players from DataFrame
+                remaining_df = players_df[~players_df["球員"].isin(del_names)].copy()
+                remaining_df.to_csv(PLAYERS_FILE, index=False)
+                # Remove headshot files for deleted players
+                for del_name in del_names:
+                    img_path = IMAGE_DIR / f"{del_name}.jpg"
+                    if img_path.exists():
+                        img_path.unlink()
+                st.success("已移除選定的球員：" + ", ".join(del_names))
+    else:
+        st.write("尚未有球員登錄。")
+
 
 def download_data_section() -> None:
     """
@@ -439,6 +548,9 @@ def player_management_section() -> None:
                     img_path = IMAGE_DIR / f"{name}.jpg"
                     img_path.write_bytes(photo.read())
                 st.success("✅ 成功新增球員！")
+        # After adding a player, inform users where to edit/delete players
+        st.info("如需修改或刪除球員，請前往『批次修改』頁面。")
+        return
 
     # Section to edit existing players' details
     st.subheader("修改球員基本資料")
