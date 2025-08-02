@@ -390,7 +390,12 @@ def player_management_section() -> None:
     st.subheader("新增球員")
     with st.form("add_player_form"):
         name = st.text_input("姓名").strip()
-        birthday = st.date_input("生日", key="birthday")
+        birthday = st.date_input(
+            "生日",
+            key="birthday",
+            # Restrict selection to today or earlier; no future birthdays
+            max_value=date.today(),
+        )
         # Age input to allow manual age entry; will override computed age if provided
         age_input = st.number_input("年紀 (可自動計算)", min_value=0, step=1, value=0)
         height = st.number_input("身高 (cm)", min_value=0.0, step=1.0)
@@ -474,7 +479,12 @@ def player_management_section() -> None:
             default_gender_index = gender_options.index(default_gender) if default_gender in gender_options else 0
             with st.form("edit_player_form"):
                 st.markdown(f"**姓名：{edit_name}**")
-                new_birthday = st.date_input("生日", value=default_birthday, key="edit_birthday")
+                new_birthday = st.date_input(
+                    "生日",
+                    value=default_birthday,
+                    key="edit_birthday",
+                    max_value=date.today(),
+                )
                 new_age = st.number_input("年紀", min_value=0, step=1, value=default_age, key="edit_age")
                 new_height = st.number_input(
                     "身高 (cm)", min_value=0.0, step=1.0, value=default_height, key="edit_height"
