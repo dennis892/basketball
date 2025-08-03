@@ -224,24 +224,29 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     Args:
         df (pd.DataFrame): The full record DataFrame.
     """
-    if df.empty:
+    # Always allow selection of players based on the registered players list.
+    # Even if no game records exist, the user can view basic information.
+    st.header("📊 球員資訊")
+    # Load the list of registered players; fallback to players present in df if necessary
+    registered_players = sorted(get_player_names())
+    # If there are no registered players, notify the user and return
+    if not registered_players:
+        st.write("尚未有球員登錄。")
         return
-
-    st.header("📊 單人統計")
-    players = sorted(df["球員"].unique())
-    selected_player = st.selectbox("選擇球員：", players)
-    player_df = df[df["球員"] == selected_player]
+    selected_player = st.selectbox("選擇球員：", registered_players)
+    # Filter records for the selected player (may be empty if no game records)
+    player_df = df[df["球員"] == selected_player] if not df.empty else pd.DataFrame()
 
     # Display the player's image if it exists
     img_path = IMAGE_DIR / f"{selected_player}.jpg"
     if img_path.exists():
         st.image(Image.open(img_path), width=120)
 
-    # Aggregate statistics
+    # Aggregate statistics if records exist; otherwise set defaults
     total_games = len(player_df)
-    total_shots = player_df["投籃數"].sum()
-    total_made = player_df["命中數"].sum()
-    accuracy = calc_accuracy(total_shots, total_made)
+    total_shots = player_df["投籃數"].sum() if not player_df.empty else 0
+    total_made = player_df["命中數"].sum() if not player_df.empty else 0
+    accuracy = calc_accuracy(total_shots, total_made) if not player_df.empty else 0
     win_rate = (
         (player_df["是否贏球"] == "✅ 是").sum() / total_games * 100 if total_games else 0
     )
@@ -268,25 +273,28 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         st.write(f"性別：{display_value(info['性別'])}")
         st.write(f"體重：{display_value(info['體重'], ' kg')}")
 
-    # Prepare data for the line chart aggregated by date (ignoring hours)
-    chart_data = (
-        player_df.groupby("日期")["命中率"].mean().reset_index()
-    )
-    chart_data["日期"] = pd.to_datetime(chart_data["日期"])
-    chart_data = chart_data.sort_values("日期")
-
-    # Create the line chart with explicit axis titles (daily granularity)
-    chart = (
-        alt.Chart(chart_data)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("日期:T", title="日期"),
-            y=alt.Y("命中率:Q", title="命中率 (%)"),
+    # If there are records, prepare data for the line chart aggregated by date (ignoring hours)
+    if not player_df.empty:
+        chart_data = (
+            player_df.groupby("日期")["命中率"].mean().reset_index()
         )
-        .properties(width=600)
-    )
-    st.subheader("📈 命中率趨勢圖 (以日期為單位)")
-    st.altair_chart(chart, use_container_width=True)
+        chart_data["日期"] = pd.to_datetime(chart_data["日期"])
+        chart_data = chart_data.sort_values("日期")
+
+        # Create the line chart with explicit axis titles (daily granularity)
+        chart = (
+            alt.Chart(chart_data)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("日期:T", title="日期"),
+                y=alt.Y("命中率:Q", title="命中率 (%)"),
+            )
+            .properties(width=600)
+        )
+        st.subheader("📈 命中率趨勢圖 (以日期為單位)")
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.write("該球員尚無比賽紀錄。")
 
 
 def compare_players_section(df: pd.DataFrame) -> None:
