@@ -275,18 +275,29 @@ def player_statistics_section(df: pd.DataFrame) -> None:
 
     # If there are records, prepare data for the line chart aggregated by date (ignoring hours)
     if not player_df.empty:
+        # Aggregate and reindex by the full date range from the earliest to latest record for this player
+        aggregated = player_df.groupby("日期")["命中率"].mean().reset_index()
+        # Convert the date strings to date objects for range computation
+        aggregated["日期"] = pd.to_datetime(aggregated["日期"]).dt.date
+        start_date = aggregated["日期"].min()
+        end_date = aggregated["日期"].max()
+        full_range = pd.date_range(start=start_date, end=end_date)
         chart_data = (
-            player_df.groupby("日期")["命中率"].mean().reset_index()
+            aggregated.set_index("日期").reindex(full_range).rename_axis("日期").reset_index()
         )
+        # The reindexed DataFrame will have the same column name for the aggregated value
+        chart_data.rename(columns={"命中率": "命中率"}, inplace=True)
         chart_data["日期"] = pd.to_datetime(chart_data["日期"])
-        chart_data = chart_data.sort_values("日期")
-
-        # Create the line chart with explicit axis titles (daily granularity)
+        # Create the line chart and set the domain to the full date range
         chart = (
             alt.Chart(chart_data)
             .mark_line(point=True)
             .encode(
-                x=alt.X("日期:T", title="日期"),
+                x=alt.X(
+                    "日期:T",
+                    title="日期",
+                    scale=alt.Scale(domain=[pd.to_datetime(start_date), pd.to_datetime(end_date)]),
+                ),
                 y=alt.Y("命中率:Q", title="命中率 (%)"),
             )
             .properties(width=600)
@@ -321,14 +332,29 @@ def compare_players_section(df: pd.DataFrame) -> None:
             .mean()
             .reset_index()
         )
-        chart_df["日期"] = pd.to_datetime(chart_df["日期"])
-        chart_df = chart_df.sort_values("日期")
-        # Draw a line for each player with a distinct color and tooltips
+        # Convert date strings to date objects for range computation
+        chart_df["日期"] = pd.to_datetime(chart_df["日期"]).dt.date
+        # Determine the overall date range across selected players
+        start_date = chart_df["日期"].min()
+        end_date = chart_df["日期"].max()
+        full_range = pd.date_range(start=start_date, end=end_date)
+        # Build a complete DataFrame with all player/date combinations
+        idx = pd.MultiIndex.from_product([selected_players, full_range], names=["球員", "日期"])
+        full_df = pd.DataFrame(index=idx).reset_index()
+        # Merge with actual data
+        merged_df = full_df.merge(chart_df, how="left", on=["球員", "日期"])
+        # Convert 日期 back to datetime for Altair
+        merged_df["日期"] = pd.to_datetime(merged_df["日期"])
+        # Plot multi-line chart with explicit domain across full range
         chart = (
-            alt.Chart(chart_df)
+            alt.Chart(merged_df)
             .mark_line(point=True)
             .encode(
-                x=alt.X("日期:T", title="日期"),
+                x=alt.X(
+                    "日期:T",
+                    title="日期",
+                    scale=alt.Scale(domain=[pd.to_datetime(start_date), pd.to_datetime(end_date)]),
+                ),
                 y=alt.Y("命中率:Q", title="命中率 (%)"),
                 color=alt.Color("球員:N", title="球員"),
                 tooltip=["日期:T", "球員:N", "命中率:Q"],
