@@ -169,6 +169,43 @@ def calc_accuracy(shots: float, made: float) -> float:
     return round((made / shots) * 100, 2) if shots else 0.0
 
 
+# Medal computation helper
+def compute_monthly_medals(df: pd.DataFrame) -> dict:
+    """
+    Compute monthly medals for a given player's records based on their shooting accuracy.
+
+    A bronze medal is awarded for a monthly accuracy between 35% and 49% (inclusive),
+    silver for 50%–59%, and gold for 60% or higher.
+
+    Args:
+        df (pd.DataFrame): Records for a single player.
+
+    Returns:
+        dict: A dictionary with keys '金', '銀', '銅' mapping to the count of medals earned.
+    """
+    medals = {"金": 0, "銀": 0, "銅": 0}
+    if df.empty:
+        return medals
+    # Copy the DataFrame to avoid modifying the original
+    tmp = df.copy()
+    # Convert the date column to datetime and extract the month period
+    tmp["日期_dt"] = pd.to_datetime(tmp["日期"])
+    tmp["month"] = tmp["日期_dt"].dt.to_period("M")
+    # Aggregate total shots and made per month
+    aggregated = tmp.groupby("month").agg({"投籃數": "sum", "命中數": "sum"})
+    # Compute monthly accuracy
+    aggregated["accuracy"] = aggregated["命中數"] / aggregated["投籃數"] * 100
+    # Determine medal counts based on accuracy thresholds
+    for acc in aggregated["accuracy"]:
+        if acc >= 60:
+            medals["金"] += 1
+        elif acc >= 50:
+            medals["銀"] += 1
+        elif acc >= 35:
+            medals["銅"] += 1
+    return medals
+
+
 def add_record_section() -> None:
     """
     Render the form for adding a new game record. Validates inputs,
@@ -272,6 +309,14 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         st.write(f"身高：{display_value(info['身高'], ' cm')}")
         st.write(f"性別：{display_value(info['性別'])}")
         st.write(f"體重：{display_value(info['體重'], ' kg')}")
+
+    # Display medal statistics for the selected player
+    medals = compute_monthly_medals(player_df)
+    st.subheader("🏅 勳章統計")
+    if any(medals.values()):
+        st.write(f"金勳章：{medals['金']} 次，銀勳章：{medals['銀']} 次，銅勳章：{medals['銅']} 次")
+    else:
+        st.write("尚未獲得任何勳章")
 
     # If there are records, prepare data for the line chart aggregated by date (ignoring hours)
     if not player_df.empty:
