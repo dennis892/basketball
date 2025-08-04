@@ -213,6 +213,13 @@ def add_record_section() -> None:
     the uploaded player image to disk.
     """
     st.header("📥 新增紀錄")
+    # Display medal rules for players to understand how medals are awarded
+    st.markdown(
+        "#### 🎖️ 勳章規則\n"
+        "- **銅勳章**：當月命中率 35%～49%\n"
+        "- **銀勳章**：當月命中率 50%～59%\n"
+        "- **金勳章**：當月命中率 60% 以上"
+    )
     players = load_players()
     if not players:
         st.warning("尚未有球員登錄，請先到『球員登錄』頁面登錄球員。")
@@ -314,7 +321,12 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     medals = compute_monthly_medals(player_df)
     st.subheader("🏅 勳章統計")
     if any(medals.values()):
-        st.write(f"金勳章：{medals['金']} 次，銀勳章：{medals['銀']} 次，銅勳章：{medals['銅']} 次")
+        # Display medal counts with representative icons
+        st.markdown(
+            f"🥇 金勳章：{medals['金']} 次\n\n"
+            f"🥈 銀勳章：{medals['銀']} 次\n\n"
+            f"🥉 銅勳章：{medals['銅']} 次"
+        )
     else:
         st.write("尚未獲得任何勳章")
 
