@@ -366,60 +366,36 @@ def player_statistics_section(df: pd.DataFrame) -> None:
 
 
 def compare_players_section(df: pd.DataFrame) -> None:
-    """
-    Render a bar chart that compares the average shooting percentage
-    across multiple players. This section will only display when
-    at least two distinct players exist in the data.
-
-    Args:
-        df (pd.DataFrame): The full record DataFrame.
-    """
-    if df["球員"].nunique() < 2:
-        return
-
-    st.header("📊 多人命中率比較（趨勢圖）")
-    players = sorted(df["球員"].unique())
+    st.header("📊 多人比較")
+    players = df["球員"].unique()
     selected_players = st.multiselect("選擇球員進行比較：", players)
 
     if selected_players:
-        # Prepare data for a multi-line trend chart aggregated by date for each player
         chart_df = (
             df[df["球員"].isin(selected_players)]
             .groupby(["球員", "日期"])["命中率"]
             .mean()
             .reset_index()
         )
-        # Convert date strings to date objects for range computation
-        chart_df["日期"] = pd.to_datetime(chart_df["日期"]).dt.date
-        # Determine the overall date range across selected players
-        start_date = chart_df["日期"].min()
-        end_date = chart_df["日期"].max()
-        full_range = pd.date_range(start=start_date, end=end_date)
-        # Build a complete DataFrame with all player/date combinations
-        idx = pd.MultiIndex.from_product([selected_players, full_range], names=["球員", "日期"])
-        full_df = pd.DataFrame(index=idx).reset_index()
-        # Merge with actual data
-        merged_df = full_df.merge(chart_df, how="left", on=["球員", "日期"])
-        # Convert 日期 back to datetime for Altair
-        merged_df["日期"] = pd.to_datetime(merged_df["日期"])
-        # Plot multi-line chart with explicit domain across full range
-        chart = (
-            alt.Chart(merged_df)
+
+        # 若資料為空，跳過畫圖，顯示警告
+        if chart_df.empty:
+            st.warning("⚠️ 選擇的球員目前沒有任何紀錄，無法比較。")
+            return
+
+        chart_df["日期"] = pd.to_datetime(chart_df["日期"])
+
+        st.altair_chart(
+            alt.Chart(chart_df)
             .mark_line(point=True)
             .encode(
-                x=alt.X(
-                    "日期:T",
-                    title="日期",
-                    scale=alt.Scale(domain=[pd.to_datetime(start_date), pd.to_datetime(end_date)]),
-                ),
-                y=alt.Y("命中率:Q", title="命中率 (%)"),
-                color=alt.Color("球員:N", title="球員"),
-                tooltip=["日期:T", "球員:N", "命中率:Q"],
+                x="日期:T",
+                y="命中率:Q",
+                color="球員:N"
             )
-            .properties(width=600)
+            .properties(width=600),
+            use_container_width=True
         )
-        st.altair_chart(chart, use_container_width=True)
-
 
 def edit_records_section(df: pd.DataFrame) -> None:
     """
