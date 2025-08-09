@@ -6,850 +6,474 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
-
-
-# Define constants for the data file and image directory using pathlib
-DATA_FILE = Path("data.csv")
-IMAGE_DIR = Path("images")
-
-# Path to store registered players and their details.
-PLAYERS_FILE = Path("players.csv")
-
-# Define the columns for the players file
-PLAYERS_COLUMNS = ["球員", "生日", "年紀", "身高", "性別", "體重"]
-
-# Ensure the players file exists and has all required columns
-if not PLAYERS_FILE.exists():
-    pd.DataFrame(columns=PLAYERS_COLUMNS).to_csv(PLAYERS_FILE, index=False)
-else:
-    # If the file exists but lacks columns, add them
-    existing_df = pd.read_csv(PLAYERS_FILE)
-    missing_cols = [col for col in PLAYERS_COLUMNS if col not in existing_df.columns]
-    if missing_cols:
-        for col in missing_cols:
-            existing_df[col] = ""
-        existing_df.to_csv(PLAYERS_FILE, index=False)
-
-# Define a path for a team logo. Place your logo file at this path
+# ========== Paths (stable next to this file) ==========
+BASE_DIR = Path(__file__).parent.resolve()
+DATA_FILE = BASE_DIR / "data.csv"
+PLAYERS_FILE = BASE_DIR / "players.csv"
+IMAGE_DIR = BASE_DIR / "images"
 TEAM_LOGO_FILE = IMAGE_DIR / "team_logo.png"
 
-# Ensure the image directory exists; if the data file is missing create an empty CSV
+PLAYER_COLS = ["球員", "生日", "年紀", "身高", "性別", "體重"]
+RECORD_COLS = ["record_id", "日期", "球員", "投籃數", "命中數", "是否贏球", "命中率"]
+
+# Bootstrap
 IMAGE_DIR.mkdir(exist_ok=True)
 if not DATA_FILE.exists():
-    empty_df = pd.DataFrame(
-        columns=["record_id", "日期", "球員", "投籃數", "命中數", "是否贏球", "命中率"]
-    )
-    empty_df.to_csv(DATA_FILE, index=False)
+    pd.DataFrame(columns=RECORD_COLS).to_csv(DATA_FILE, index=False)
+if not PLAYERS_FILE.exists():
+    pd.DataFrame(columns=PLAYER_COLS).to_csv(PLAYERS_FILE, index=False)
+else:
+    _p = pd.read_csv(PLAYERS_FILE)
+    for c in PLAYER_COLS:
+        if c not in _p.columns:
+            _p[c] = ""
+    _p.to_csv(PLAYERS_FILE, index=False)
 
+# ========== Helpers ==========
+def normalize_player_series(s: pd.Series) -> pd.Series:
+    if s is None:
+        return pd.Series([], dtype="object")
+    s = s.astype(str).str.strip()
+    s = s.mask(s.isin(["", "nan", "None"]), pd.NA)
+    return s
+
+def normalize_win_col(s: pd.Series) -> pd.Series:
+    """Normalize win indicator to 'Y' or 'N' only."""
+    if s is None:
+        return pd.Series([], dtype="object")
+    s = s.astype(str).str.strip()
+    # Map historical symbols/words to Y/N
+    mapping = {
+        "✅ 是": "Y", "是": "Y", "Y": "Y", "y": "Y", "Yes": "Y", "YES": "Y", "true": "Y", "True": "Y",
+        "❌ 否": "N", "否": "N", "N": "N", "n": "N", "No": "N", "NO": "N", "false": "N", "False": "N",
+        "": pd.NA, "nan": pd.NA, "None": pd.NA
+    }
+    s = s.map(lambda v: mapping.get(v, v))
+    # Anything not Y becomes N if it's not NA
+    s = s.where(s.isin(["Y","N"]) | s.isna(), "N")
+    return s
 
 def load_data() -> pd.DataFrame:
-    """
-    Load the records from the CSV file into a DataFrame.
-
-    Returns:
-        pd.DataFrame: The current basketball records.
-    """
-    return pd.read_csv(DATA_FILE)
-
-
-# Player management helpers
-def load_players_df() -> pd.DataFrame:
-    """
-    Load the registered players DataFrame from the players CSV.
-
-    Returns:
-        pd.DataFrame: DataFrame containing player details.
-    """
-    return pd.read_csv(PLAYERS_FILE)
-
-
-def get_player_names() -> list:
-    """
-    Get a list of all registered player names.
-
-    Returns:
-        list[str]: List of player names.
-    """
-    dfp = load_players_df()
-    return dfp["球員"].dropna().astype(str).tolist()
-
-
-def load_players() -> list:
-    """
-    Alias for backward compatibility. Returns the list of player names.
-    """
-    return get_player_names()
-
-
-def add_player(name: str) -> None:
-    """
-    Register a new player by appending their name to the players CSV,
-    ensuring no duplicates.
-
-    Args:
-        name (str): The player's name.
-    """
-    # Deprecated: this function now accepts additional fields through add_player_details.
-    name = name.strip()
-    if not name:
-        return
-    current_players = set(get_player_names())
-    if name in current_players:
-        return
-    # Append a new player with empty details
-    df_existing = load_players_df()
-    new_record = {col: "" for col in PLAYERS_COLUMNS}
-    new_record["球員"] = name
-    df_new = pd.concat([df_existing, pd.DataFrame([new_record])], ignore_index=True)
-    df_new.to_csv(PLAYERS_FILE, index=False)
-
-
-def add_player_details(name: str, birthday: str = "", age: str = "", height: str = "",
-                       gender: str = "", weight: str = "") -> None:
-    """
-    Register a new player with full details, ensuring no duplicates.
-
-    Args:
-        name (str): Player's name.
-        birthday (str): Birthday in YYYY-MM-DD format.
-        age (str): Age (will be computed from birthday if empty).
-        height (str): Height in cm.
-        gender (str): Gender description.
-        weight (str): Weight in kg.
-    """
-    name = name.strip()
-    if not name:
-        return
-    current_players = set(get_player_names())
-    if name in current_players:
-        return
-    df_existing = load_players_df()
-    # If age is empty and birthday provided, compute age
-    if not age and birthday:
-        try:
-            birth_date = pd.to_datetime(birthday)
-            today = pd.to_datetime(date.today())
-            age = str(today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day)))
-        except Exception:
-            age = ""
-    new_record = {
-        "球員": name,
-        "生日": birthday,
-        "年紀": age,
-        "身高": height,
-        "性別": gender,
-        "體重": weight,
-    }
-    df_new = pd.concat([df_existing, pd.DataFrame([new_record])], ignore_index=True)
-    df_new.to_csv(PLAYERS_FILE, index=False)
-
+    df = pd.read_csv(DATA_FILE, dtype=str)  # read as str, cast later
+    for c in RECORD_COLS:
+        if c not in df.columns:
+            df[c] = pd.NA
+    df["球員"] = normalize_player_series(df["球員"])
+    # Normalize win col to Y/N
+    df["是否贏球"] = normalize_win_col(df["是否贏球"])
+    for c in ["投籃數", "命中數", "命中率"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+    df["record_id"] = df["record_id"].astype(str).str.strip()
+    df.loc[df["record_id"].isin(["", "nan", "None"]), "record_id"] = pd.NA
+    return df
 
 def save_data(df: pd.DataFrame) -> None:
-    """
-    Save the DataFrame back to disk.
-
-    Args:
-        df (pd.DataFrame): Data to persist.
-    """
+    for c in RECORD_COLS:
+        if c not in df.columns:
+            df[c] = pd.NA
+    # Ensure win col is Y/N
+    df["是否贏球"] = normalize_win_col(df["是否贏球"])
+    df = df[RECORD_COLS].copy()
     df.to_csv(DATA_FILE, index=False)
 
+def load_players_df() -> pd.DataFrame:
+    dfp = pd.read_csv(PLAYERS_FILE, dtype=str)
+    for c in PLAYER_COLS:
+        if c not in dfp.columns:
+            dfp[c] = ""
+    dfp["球員"] = normalize_player_series(dfp["球員"])
+    return dfp
 
-def calc_accuracy(shots: float, made: float) -> float:
-    """
-    Compute a shooting percentage as a percentage value. If shots is zero,
-    return 0 to avoid division by zero.
+def save_players_df(dfp: pd.DataFrame) -> None:
+    for c in PLAYER_COLS:
+        if c not in dfp.columns:
+            dfp[c] = ""
+    dfp = dfp[PLAYER_COLS].copy()
+    dfp.to_csv(PLAYERS_FILE, index=False)
 
-    Args:
-        shots (float): Number of shot attempts.
-        made (float): Number of successful shots.
+def get_player_names() -> list:
+    dfp = load_players_df()
+    names = normalize_player_series(dfp["球員"]).dropna().unique().tolist()
+    names = [str(x) for x in names]
+    names.sort()
+    return names
 
-    Returns:
-        float: Shooting accuracy as a percentage rounded to two decimals.
-    """
+def calc_accuracy(shots, made) -> float:
+    shots = float(shots) if pd.notna(shots) else 0.0
+    made = float(made) if pd.notna(made) else 0.0
     return round((made / shots) * 100, 2) if shots else 0.0
 
-
-# Medal computation helper
-def compute_monthly_medals(df: pd.DataFrame) -> dict:
-    """
-    Compute monthly medals for a given player's records based on their shooting accuracy.
-
-    A bronze medal is awarded for a monthly accuracy between 35% and 49% (inclusive),
-    silver for 50%–59%, and gold for 60% or higher.
-
-    Args:
-        df (pd.DataFrame): Records for a single player.
-
-    Returns:
-        dict: A dictionary with keys '金', '銀', '銅' mapping to the count of medals earned.
-    """
+def compute_monthly_medals(pdf: pd.DataFrame) -> dict:
     medals = {"金": 0, "銀": 0, "銅": 0}
-    if df.empty:
+    if pdf.empty:
         return medals
-    # Copy the DataFrame to avoid modifying the original
-    tmp = df.copy()
-    # Convert the date column to datetime and extract the month period
-    tmp["日期_dt"] = pd.to_datetime(tmp["日期"])
+    tmp = pdf.copy()
+    tmp["日期_dt"] = pd.to_datetime(tmp["日期"], errors="coerce")
+    tmp = tmp.dropna(subset=["日期_dt"])
+    if tmp.empty:
+        return medals
     tmp["month"] = tmp["日期_dt"].dt.to_period("M")
-    # Aggregate total shots and made per month
-    aggregated = tmp.groupby("month").agg({"投籃數": "sum", "命中數": "sum"})
-    # Compute monthly accuracy
-    aggregated["accuracy"] = aggregated["命中數"] / aggregated["投籃數"] * 100
-    # Determine medal counts based on accuracy thresholds
-    for acc in aggregated["accuracy"]:
-        if acc >= 60:
+    agg = tmp.groupby("month").agg({"投籃數": "sum", "命中數": "sum"})
+    acc = (agg["命中數"] / agg["投籃數"]).fillna(0) * 100
+    for v in acc:
+        if v >= 60:
             medals["金"] += 1
-        elif acc >= 50:
+        elif v >= 50:
             medals["銀"] += 1
-        elif acc >= 35:
+        elif v >= 35:
             medals["銅"] += 1
     return medals
 
-
+# ========== UI Sections ==========
 def add_record_section() -> None:
-    """
-    Render the form for adding a new game record. Validates inputs,
-    computes the accuracy, saves the new record, and optionally writes
-    the uploaded player image to disk.
-    """
     st.header("📥 新增紀錄")
-    # Display medal rules for players to understand how medals are awarded
     st.markdown(
         "#### 🎖️ 勳章規則\n"
         "- **銅勳章**：當月命中率 35%～49%\n"
         "- **銀勳章**：當月命中率 50%～59%\n"
         "- **金勳章**：當月命中率 60% 以上"
     )
-    players = load_players()
+    players = get_player_names()
     if not players:
         st.warning("尚未有球員登錄，請先到『球員登錄』頁面登錄球員。")
         return
+
     with st.form("add_record"):
-        col1, col2 = st.columns(2)
-        with col1:
+        c1, c2 = st.columns(2)
+        with c1:
             game_date = st.date_input("比賽日期", value=date.today())
-        with col2:
-            # Select from registered players
+        with c2:
             player = st.selectbox("選擇球員", players)
         shots = st.number_input("投籃次數", min_value=0, step=1)
         made = st.number_input("命中次數", min_value=0, step=1)
-        win = st.selectbox("這場是否贏球？", ["✅ 是", "❌ 否"])
+        win = st.selectbox("這場是否贏球？", ["Y", "N"])   # <-- Y/N
         submit = st.form_submit_button("新增紀錄")
 
         if submit:
-            # Validate user inputs
             if made > shots:
                 st.warning("命中不能大於投籃")
             else:
-                # Compute accuracy and build the new record
-                accuracy = calc_accuracy(shots, made)
-                new_record = {
+                df = load_data()
+                new = {
                     "record_id": str(uuid.uuid4()),
                     "日期": game_date.strftime("%Y-%m-%d"),
                     "球員": player,
-                    "投籃數": shots,
-                    "命中數": made,
-                    "是否贏球": win,
-                    "命中率": accuracy,
+                    "投籃數": int(shots),
+                    "命中數": int(made),
+                    "是否贏球": win,  # already Y/N
+                    "命中率": calc_accuracy(shots, made),
                 }
-                # Load current data, append the new record, and save
-                df = load_data()
-                df = pd.concat([df, pd.DataFrame([new_record])], ignore_index=True)
+                df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
                 save_data(df)
                 st.success("✅ 紀錄新增成功！")
 
-
 def player_statistics_section(df: pd.DataFrame) -> None:
-    """
-    Display statistics and a trend chart for a single player, including
-    the player's photo if available. This section will only show when
-    there is at least one record.
-
-    Args:
-        df (pd.DataFrame): The full record DataFrame.
-    """
-    # Always allow selection of players based on the registered players list.
-    # Even if no game records exist, the user can view basic information.
     st.header("📊 球員資訊")
-    # Load the list of registered players; fallback to players present in df if necessary
-    registered_players = sorted(get_player_names())
-    # If there are no registered players, notify the user and return
-    if not registered_players:
-        st.write("尚未有球員登錄。")
+    names = get_player_names()
+    if not names:
+        st.info("尚未有球員登錄。")
         return
-    selected_player = st.selectbox("選擇球員：", registered_players)
-    # Filter records for the selected player (may be empty if no game records)
-    player_df = df[df["球員"] == selected_player] if not df.empty else pd.DataFrame()
+    name = st.selectbox("選擇球員：", names)
 
-    # Display the player's image if it exists
-    img_path = IMAGE_DIR / f"{selected_player}.jpg"
+    pdf = df[df["球員"] == name] if not df.empty else pd.DataFrame()
+
+    # 頭像
+    img_path = IMAGE_DIR / f"{name}.jpg"
     if img_path.exists():
         st.image(Image.open(img_path), width=120)
 
-    # Aggregate statistics if records exist; otherwise set defaults
-    total_games = len(player_df)
-    total_shots = player_df["投籃數"].sum() if not player_df.empty else 0
-    total_made = player_df["命中數"].sum() if not player_df.empty else 0
-    accuracy = calc_accuracy(total_shots, total_made) if not player_df.empty else 0
-    win_rate = (
-        (player_df["是否贏球"] == "✅ 是").sum() / total_games * 100 if total_games else 0
-    )
+    # 整體統計
+    total_games = len(pdf)
+    total_shots = int(pdf["投籃數"].sum()) if not pdf.empty else 0
+    total_made = int(pdf["命中數"].sum()) if not pdf.empty else 0
+    acc = calc_accuracy(total_shots, total_made) if not pdf.empty else 0
+    win_rate = (pdf["是否贏球"].eq("Y").sum() / total_games * 100) if total_games else 0  # <-- Y
 
     st.write(f"比賽場數：{total_games}")
     st.write(f"總投籃：{total_shots}，命中：{total_made}")
-    st.write(f"命中率：{accuracy:.2f}%，贏球率：{win_rate:.2f}%")
+    st.write(f"命中率：{acc:.2f}%，贏球率：{win_rate:.2f}%")
 
-    # Display player's basic information from the registered players file
-    players_df = load_players_df()
-    details_df = players_df[players_df["球員"] == selected_player]
-    if not details_df.empty:
-        info = details_df.iloc[0]
-        # Helper to normalize display values; handle NaN or empty strings
-        def display_value(val, suffix=""):
-            if pd.isna(val) or str(val).strip() == "":
-                return "未填寫"
-            return f"{val}{suffix}"
+    # 基本資料
+    pdfull = load_players_df()
+    row = pdfull[pdfull["球員"] == name]
+    if not row.empty:
+        info = row.iloc[0]
+        def show(v, suffix=""):
+            return "未填寫" if pd.isna(v) or str(v).strip()=="" else f"{v}{suffix}"
         st.subheader("📋 球員基本資料")
-        st.write(f"姓名：{selected_player}")
-        st.write(f"生日：{display_value(info['生日'])}")
-        st.write(f"年紀：{display_value(info['年紀'])}")
-        st.write(f"身高：{display_value(info['身高'], ' cm')}")
-        st.write(f"性別：{display_value(info['性別'])}")
-        st.write(f"體重：{display_value(info['體重'], ' kg')}")
+        st.write(f"姓名：{name}")
+        st.write(f"生日：{show(info.get('生日',''))}")
+        st.write(f"年紀：{show(info.get('年紀',''))}")
+        st.write("身高：" + (f"{show(info.get('身高',''))} cm" if show(info.get('身高',''))!='未填寫' else "未填寫"))
+        st.write("體重：" + (f"{show(info.get('體重',''))} kg" if show(info.get('體重',''))!='未填寫' else "未填寫"))
+        st.write(f"性別：{show(info.get('性別',''))}")
 
-    # Display medal statistics for the selected player
-    medals = compute_monthly_medals(player_df)
+    # 當日表現
+    st.subheader("📅 當日表現")
+    if not pdf.empty:
+        d = pdf.copy()
+        d["日期"] = pd.to_datetime(d["日期"], errors="coerce").dt.date
+        d = d.dropna(subset=["日期"])
+        if not d.empty:
+            agg = (
+                d.assign(贏球=d["是否贏球"].eq("Y").astype(int))  # <-- Y
+                 .groupby("日期", as_index=False)
+                 .agg(當日總投籃=("投籃數","sum"),
+                      當日總命中=("命中數","sum"),
+                      當日贏球數=("贏球","sum"),
+                      場數=("record_id","count"))
+            )
+            agg["當日命中率(%)"] = (agg["當日總命中"] / agg["當日總投籃"]).fillna(0) * 100
+            agg["當日贏球率(%)"] = (agg["當日贏球數"] / agg["場數"]).fillna(0) * 100
+            agg = agg.sort_values("日期")
+            st.dataframe(agg[["日期","當日命中率(%)","當日贏球率(%)","場數"]], use_container_width=True)
+        else:
+            st.info("尚無有效日期的比賽紀錄。")
+    else:
+        st.info("該球員尚無比賽紀錄。")
+
+    # 勳章
+    medals = compute_monthly_medals(pdf)
     st.subheader("🏅 勳章統計")
     if any(medals.values()):
-        # Display medal counts with representative icons
-        st.markdown(
-            f"🥇 金勳章：{medals['金']} 次\n\n"
-            f"🥈 銀勳章：{medals['銀']} 次\n\n"
-            f"🥉 銅勳章：{medals['銅']} 次"
-        )
+        st.markdown(f"🥇 金：{medals['金']}　🥈 銀：{medals['銀']}　🥉 銅：{medals['銅']}")
     else:
         st.write("尚未獲得任何勳章")
 
-    # If there are records, prepare data for the line chart aggregated by date (ignoring hours)
-    if not player_df.empty:
-        # Aggregate and reindex by the full date range from the earliest to latest record for this player
-        aggregated = player_df.groupby("日期")["命中率"].mean().reset_index()
-        # Convert the date strings to date objects for range computation
-        aggregated["日期"] = pd.to_datetime(aggregated["日期"]).dt.date
-        start_date = aggregated["日期"].min()
-        end_date = aggregated["日期"].max()
-        full_range = pd.date_range(start=start_date, end=end_date)
-        chart_data = (
-            aggregated.set_index("日期").reindex(full_range).rename_axis("日期").reset_index()
-        )
-        # The reindexed DataFrame will have the same column name for the aggregated value
-        chart_data.rename(columns={"命中率": "命中率"}, inplace=True)
-        chart_data["日期"] = pd.to_datetime(chart_data["日期"])
-        # Create the line chart and set the domain to the full date range
-        chart = (
-            alt.Chart(chart_data)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X(
-                    "日期:T",
-                    title="日期",
-                    scale=alt.Scale(domain=[pd.to_datetime(start_date), pd.to_datetime(end_date)]),
-                ),
-                y=alt.Y("命中率:Q", title="命中率 (%)"),
+    # 趨勢圖
+    if not pdf.empty:
+        g = pdf.groupby("日期")["命中率"].mean().reset_index()
+        g["日期"] = pd.to_datetime(g["日期"], errors="coerce")
+        g = g.dropna(subset=["日期"])
+        if not g.empty:
+            start, end = g["日期"].min(), g["日期"].max()
+            chart = (
+                alt.Chart(g)
+                .mark_line(point=True)
+                .encode(x=alt.X("日期:T", scale=alt.Scale(domain=[start, end])), y="命中率:Q")
+                .properties(width=600)
             )
-            .properties(width=600)
-        )
-        st.subheader("📈 命中率趨勢圖 (以日期為單位)")
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.write("該球員尚無比賽紀錄。")
-
+            st.subheader("📈 命中率趨勢圖 (以日期為單位)")
+            st.altair_chart(chart, use_container_width=True)
 
 def compare_players_section(df: pd.DataFrame) -> None:
     st.header("📊 多人比較")
-    players = df["球員"].unique()
-    selected_players = st.multiselect("選擇球員進行比較：", players)
-
-    if selected_players:
-        chart_df = (
-            df[df["球員"].isin(selected_players)]
-            .groupby(["球員", "日期"])["命中率"]
+    if df.empty:
+        st.info("目前沒有任何比賽紀錄。")
+        return
+    players = normalize_player_series(df["球員"]).dropna().unique().tolist()
+    players = [str(x) for x in players]
+    players.sort()
+    chosen = st.multiselect("選擇球員進行比較：", players)
+    if chosen:
+        cdf = (
+            df[df["球員"].isin(chosen)]
+            .groupby(["球員","日期"])["命中率"]
             .mean()
             .reset_index()
         )
-
-        # 若資料為空，跳過畫圖，顯示警告
-        if chart_df.empty:
+        cdf["日期"] = pd.to_datetime(cdf["日期"], errors="coerce")
+        cdf = cdf.dropna(subset=["日期"])
+        if cdf.empty:
             st.warning("⚠️ 選擇的球員目前沒有任何紀錄，無法比較。")
             return
-
-        chart_df["日期"] = pd.to_datetime(chart_df["日期"])
-
         st.altair_chart(
-            alt.Chart(chart_df)
-            .mark_line(point=True)
-            .encode(
-                x="日期:T",
-                y="命中率:Q",
-                color="球員:N"
-            )
-            .properties(width=600),
+            alt.Chart(cdf).mark_line(point=True).encode(x="日期:T", y="命中率:Q", color="球員:N").properties(width=600),
             use_container_width=True
         )
 
 def edit_records_section(df: pd.DataFrame) -> None:
-    """
-    Present an editable table of existing records. Upon saving,
-    recalculate the accuracy for each record and persist the changes.
+    st.header("✏️ 登錄修改")
 
-    Args:
-        df (pd.DataFrame): The full record DataFrame.
-    """
-    st.header("✏️ 批次修改紀錄")
+    # 批次修改（有紀錄時才顯示）
     if df.empty:
         st.info("沒有紀錄可修改")
-        return
+    else:
+        players = normalize_player_series(df["球員"]).dropna().unique().tolist()
+        players = [str(x) for x in players]
+        players.sort()
+        pick = st.selectbox("選擇球員進行修改：", players) if players else None
 
-    # Allow the user to select a specific player to edit records for
-    players = sorted(df["球員"].unique())
-    selected_player = st.selectbox("選擇球員進行修改：", players)
-    # Filter records for the selected player
-    df_filtered = df[df["球員"] == selected_player] if selected_player else df
+        if pick:
+            sub = df[df["球員"] == pick].copy()
+        else:
+            sub = df.copy()
 
-    # Drop the calculated "命中率" column for editing to avoid user confusion.
-    editable_df = df_filtered.drop(columns=["命中率"]).copy()
-    edited_df = st.data_editor(
-        editable_df, num_rows="dynamic", use_container_width=True, key="editor_records"
-    )
+        # 移除命中率欄位供編輯，避免誤改；儲存時自動重算
+        editable = sub.drop(columns=["命中率"]).copy()
 
-    if st.button("💾 儲存全部修改"):
-        # Recalculate the accuracy for each row in the edited subset
-        edited_df["命中率"] = edited_df.apply(
-            lambda r: calc_accuracy(r["投籃數"], r["命中數"]), axis=1
+        # 讓 record_id 只讀，避免被刪改
+        try:
+            col_cfg = {"record_id": st.column_config.TextColumn("record_id", disabled=True)}
+        except Exception:
+            col_cfg = None
+
+        edited = st.data_editor(
+            editable, num_rows="dynamic", use_container_width=True, key="editor_records",
+            column_config=col_cfg if col_cfg else None
         )
-        # Load the full data to update it
-        full_df = df.copy()
-        # Replace the rows corresponding to the edited player's records
-        for _, row in edited_df.iterrows():
-            full_df.loc[full_df["record_id"] == row["record_id"], full_df.columns] = row
-        # Save the updated full data
-        save_data(full_df)
-        st.success("✅ 所有修改已儲存")
 
-    # --- Player management: edit basic information ---
+        if st.button("💾 儲存全部修改"):
+            # 轉型 & 計算命中率 & 規一化贏球欄
+            edited["投籃數"] = pd.to_numeric(edited["投籃數"], errors="coerce").fillna(0).astype(int)
+            edited["命中數"] = pd.to_numeric(edited["命中數"], errors="coerce").fillna(0).astype(int)
+            edited["record_id"] = edited["record_id"].astype(str).str.strip()
+            # 規一化 Y/N
+            edited["是否贏球"] = normalize_win_col(edited["是否贏球"])
+            edited["命中率"] = edited.apply(lambda r: calc_accuracy(r["投籃數"], r["命中數"]), axis=1)
+
+            full = load_data()  # 重新讀最新資料
+            full["record_id"] = full["record_id"].astype(str).str.strip()
+
+            if pick:
+                # ① 先把該球員原本的紀錄整批移除（讓刪除真正生效）
+                full = full[full["球員"] != pick].copy()
+                # ② 再把編輯後（保留下來）的紀錄加入回去
+                edited["球員"] = pick  # 確保球員名一致
+                full = pd.concat([full, edited], ignore_index=True, sort=False)
+            else:
+                # 沒挑球員：以保留的 record_id 為準，刪除不在 edited 的列
+                keep_ids = set(edited["record_id"].dropna().tolist())
+                full = full[full["record_id"].isin(keep_ids)].copy()
+                # 更新保留列
+                full = full.set_index("record_id")
+                edited = edited.set_index("record_id")
+                full.update(edited)
+                full = full.reset_index()
+
+            # 最後確保欄位順序與 Y/N 格式
+            for c in RECORD_COLS:
+                if c not in full.columns:
+                    full[c] = pd.NA
+            full["是否贏球"] = normalize_win_col(full["是否贏球"])
+            full = full[RECORD_COLS]
+
+            save_data(full)
+            st.success("✅ 所有修改已儲存（包含刪除），且贏球欄統一為 Y/N。")
+
+    # 修改球員資料（永遠顯示）
     st.subheader("🔧 修改球員基本資料")
-    players_df = load_players_df()
-    if not players_df.empty:
-        edit_name = st.selectbox(
-            "選擇要修改的球員", players_df["球員"].dropna().astype(str).tolist(), key="edit_player_select_batch"
-        )
-        if edit_name:
-            # Retrieve the player's current details
-            current_row = players_df[players_df["球員"] == edit_name].iloc[0]
-            # Prepare default values for the form
+    pdf = load_players_df()
+    if not pdf.empty:
+        opts = normalize_player_series(pdf["球員"]).dropna().unique().tolist()
+        opts = [str(x) for x in opts]
+        opts.sort()
+        who = st.selectbox("選擇要修改的球員", opts, key="edit_player_select_batch")
+        if who:
+            row = pdf[pdf["球員"] == who].iloc[0]
             try:
-                default_birthday = date.fromisoformat(str(current_row["生日"])) if str(current_row["生日"]) else date.today()
+                default_birthday = date.fromisoformat(str(row.get("生日",""))) if str(row.get("生日","")) else date.today()
             except Exception:
                 default_birthday = date.today()
-            # Safely compute default values; treat NaN or empty strings as missing
-            if pd.notna(current_row["身高"]) and str(current_row["身高"]).strip():
+
+            def _f(v, d=0.0):
                 try:
-                    default_height = float(current_row["身高"])
-                    if pd.isna(default_height):
-                        default_height = 0.0
+                    if pd.isna(v) or str(v).strip()=="":
+                        return d
+                    return float(v)
                 except Exception:
-                    default_height = 0.0
-            else:
-                default_height = 0.0
-            if pd.notna(current_row["體重"]) and str(current_row["體重"]).strip():
-                try:
-                    default_weight = float(current_row["體重"])
-                    if pd.isna(default_weight):
-                        default_weight = 0.0
-                except Exception:
-                    default_weight = 0.0
-            else:
-                default_weight = 0.0
-            gender_options = ["男", "女", "其他"]
-            if pd.notna(current_row["性別"]) and str(current_row["性別"]).strip() in gender_options:
-                default_gender = str(current_row["性別"]).strip()
-            else:
-                default_gender = gender_options[0]
-            default_gender_index = gender_options.index(default_gender) if default_gender in gender_options else 0
+                    return d
+            h_def = _f(row.get("身高",0.0))
+            w_def = _f(row.get("體重",0.0))
+            gender_opts = ["男","女","其他"]
+            g_def = str(row.get("性別","男")) if str(row.get("性別","")).strip() in gender_opts else "男"
+
             with st.form("edit_player_form_batch"):
-                st.markdown(f"**姓名：{edit_name}**")
-                new_birthday = st.date_input(
-                    "生日",
-                    value=default_birthday,
-                    key="edit_birthday_batch",
-                    min_value=date(1925, 1, 1),
-                    max_value=date.today(),
-                )
-                new_height = st.number_input(
-                    "身高 (cm)", min_value=0.0, step=1.0, value=default_height, key="edit_height_batch"
-                )
-                new_gender = st.selectbox(
-                    "性別", gender_options, index=default_gender_index, key="edit_gender_batch"
-                )
-                new_weight = st.number_input(
-                    "體重 (kg)", min_value=0.0, step=1.0, value=default_weight, key="edit_weight_batch"
-                )
-                new_photo = st.file_uploader(
-                    "更新頭像（可選）", type=["jpg", "jpeg", "png"], key="edit_player_photo_batch"
-                )
-                submit_edit = st.form_submit_button("保存球員修改")
-                if submit_edit:
-                    # Update the DataFrame with new values and compute age automatically
-                    players_df.loc[players_df["球員"] == edit_name, "生日"] = new_birthday.strftime(
-                        "%Y-%m-%d"
-                    )
-                    # Compute age based on birthday
-                    today_date = date.today()
-                    age_value = today_date.year - new_birthday.year - (
-                        (today_date.month, today_date.day) < (new_birthday.month, new_birthday.day)
-                    )
-                    players_df.loc[players_df["球員"] == edit_name, "年紀"] = str(age_value) if age_value else ""
-                    players_df.loc[players_df["球員"] == edit_name, "身高"] = (
-                        str(int(new_height)) if new_height else ""
-                    )
-                    players_df.loc[players_df["球員"] == edit_name, "性別"] = new_gender
-                    players_df.loc[players_df["球員"] == edit_name, "體重"] = (
-                        str(int(new_weight)) if new_weight else ""
-                    )
-                    players_df.to_csv(PLAYERS_FILE, index=False)
+                st.markdown(f"**姓名：{who}**")
+                new_bd = st.date_input("生日", value=default_birthday, min_value=date(1925,1,1), max_value=date.today())
+                new_h = st.number_input("身高 (cm)", min_value=0.0, step=1.0, value=h_def)
+                new_g = st.selectbox("性別", gender_opts, index=gender_opts.index(g_def))
+                new_w = st.number_input("體重 (kg)", min_value=0.0, step=1.0, value=w_def)
+                new_photo = st.file_uploader("更新頭像（可選）", type=["jpg","jpeg","png"])
+                ok = st.form_submit_button("保存球員修改")
+                if ok:
+                    pdf.loc[pdf["球員"] == who, "生日"] = new_bd.strftime("%Y-%m-%d")
+                    t = date.today()
+                    age = t.year - new_bd.year - ((t.month, t.day) < (new_bd.month, new_bd.day))
+                    pdf.loc[pdf["球員"] == who, "年紀"] = str(age) if age >= 0 else ""
+                    pdf.loc[pdf["球員"] == who, "身高"] = str(int(new_h)) if new_h else ""
+                    pdf.loc[pdf["球員"] == who, "性別"] = new_g
+                    pdf.loc[pdf["球員"] == who, "體重"] = str(int(new_w)) if new_w else ""
+                    save_players_df(pdf)
                     if new_photo is not None:
-                        img_path = IMAGE_DIR / f"{edit_name}.jpg"
-                        img_path.write_bytes(new_photo.read())
+                        (IMAGE_DIR / f"{who}.jpg").write_bytes(new_photo.read())
                     st.success("✅ 球員資料已更新！")
     else:
         st.write("尚未有球員登錄。")
 
-    # --- Player management: remove players ---
+    # 移除球員（永遠顯示）
     st.subheader("🗑️ 移除球員")
-    players_df = load_players_df()
-    if not players_df.empty:
-        del_names = st.multiselect(
-            "選擇要移除的球員", players_df["球員"].dropna().astype(str).tolist(), key="delete_players_batch"
-        )
-        if st.button("移除選定球員", key="delete_players_button_batch"):
+    pdf = load_players_df()
+    if not pdf.empty:
+        del_opts = normalize_player_series(pdf["球員"]).dropna().unique().tolist()
+        del_opts = [str(x) for x in del_opts]
+        del_opts.sort()
+        del_names = st.multiselect("選擇要移除的球員", del_opts)
+        if st.button("移除選定球員"):
             if del_names:
-                # Remove selected players from DataFrame
-                remaining_df = players_df[~players_df["球員"].isin(del_names)].copy()
-                remaining_df.to_csv(PLAYERS_FILE, index=False)
-                # Remove headshot files for deleted players
-                for del_name in del_names:
-                    img_path = IMAGE_DIR / f"{del_name}.jpg"
-                    if img_path.exists():
-                        img_path.unlink()
+                remain = pdf[~pdf["球員"].isin(del_names)].copy()
+                save_players_df(remain)
+                for n in del_names:
+                    p = IMAGE_DIR / f"{n}.jpg"
+                    if p.exists():
+                        p.unlink()
                 st.success("已移除選定的球員：" + ", ".join(del_names))
     else:
         st.write("尚未有球員登錄。")
 
-
 def download_data_section() -> None:
-    """
-    Provide a button for users to download the current CSV data.
-    """
     st.header("📁 備份 / 下載資料")
     with open(DATA_FILE, "rb") as f:
-        st.download_button(
-            "⬇️ 下載 CSV 備份", f, file_name="basketball_data.csv", mime="text/csv"
-        )
-
+        st.download_button("⬇️ 下載 CSV 備份", f, file_name="basketball_data.csv", mime="text/csv")
 
 def player_management_section() -> None:
-    """
-    A section to register and manage players. Users can add new players
-    with detailed information (photo, name, birthday, height, gender, weight)
-    and remove existing players. Player details are stored in a CSV file
-    and photos are saved in the images directory.
-    """
     st.header("👤 球員登錄")
-
-    # Form to add a new player
     st.subheader("新增球員")
     with st.form("add_player_form"):
         name = st.text_input("姓名").strip()
-        birthday = st.date_input(
-            "生日",
-            key="birthday",
-            # Restrict selection to between 1925 and today
-            min_value=date(1925, 1, 1),
-            max_value=date.today(),
-        )
-        # Remove manual age input; age will be computed automatically based on birthday
+        birthday = st.date_input("生日", min_value=date(1925,1,1), max_value=date.today())
         height = st.number_input("身高 (cm)", min_value=0.0, step=1.0)
-        gender = st.selectbox("性別", ["男", "女", "其他"])
+        gender = st.selectbox("性別", ["男","女","其他"])
         weight = st.number_input("體重 (kg)", min_value=0.0, step=1.0)
-        photo = st.file_uploader("上傳頭像（可選）", type=["jpg", "jpeg", "png"], key="player_photo")
-        submit_new = st.form_submit_button("新增球員")
-
-        if submit_new:
+        photo = st.file_uploader("上傳頭像（可選）", type=["jpg","jpeg","png"])
+        ok = st.form_submit_button("新增球員")
+        if ok:
             if not name:
                 st.warning("請輸入球員姓名")
             elif name in get_player_names():
                 st.warning("此球員已登錄")
             else:
-                # Format birthday string and prepare other fields; age will be computed automatically
-                birthday_str = birthday.strftime("%Y-%m-%d")
-                height_str = str(int(height)) if height else ""
-                weight_str = str(int(weight)) if weight else ""
-                # Pass an empty age to trigger automatic age computation in add_player_details
-                add_player_details(
-                    name,
-                    birthday=birthday_str,
-                    age="",
-                    height=height_str,
-                    gender=gender,
-                    weight=weight_str,
-                )
+                dfp = load_players_df()
+                try:
+                    birth_date = birthday
+                    t = date.today()
+                    age = t.year - birth_date.year - ((t.month, t.day) < (birth_date.month, birth_date.day))
+                except Exception:
+                    age = ""
+                new = {
+                    "球員": name,
+                    "生日": birthday.strftime("%Y-%m-%d"),
+                    "年紀": str(age) if age != "" else "",
+                    "身高": str(int(height)) if height else "",
+                    "性別": gender,
+                    "體重": str(int(weight)) if weight else "",
+                }
+                dfp = pd.concat([dfp, pd.DataFrame([new])], ignore_index=True)
+                save_players_df(dfp)
                 if photo is not None:
-                    img_path = IMAGE_DIR / f"{name}.jpg"
-                    img_path.write_bytes(photo.read())
+                    (IMAGE_DIR / f"{name}.jpg").write_bytes(photo.read())
                 st.success("✅ 成功新增球員！")
-        # After adding a player, inform users where to edit/delete players
-        st.info("如需修改或刪除球員，請前往『批次修改』頁面。")
-        return
+    st.info("如需修改或刪除球員，請前往『登錄修改』頁面。")
 
-    # Section to edit existing players' details
-    st.subheader("修改球員基本資料")
-    players_df = load_players_df()
-    if not players_df.empty:
-        edit_name = st.selectbox(
-            "選擇要修改的球員", players_df["球員"].dropna().astype(str).tolist(), key="edit_player_select"
-        )
-        if edit_name:
-            # Retrieve the player's current details
-            current_row = players_df[players_df["球員"] == edit_name].iloc[0]
-            # Prepare default values for the form
-            # Parse birthday string to a date
-            try:
-                default_birthday = date.fromisoformat(str(current_row["生日"])) if str(current_row["生日"]) else date.today()
-            except Exception:
-                default_birthday = date.today()
-            # Safely compute default values; treat NaN or empty strings as missing
-            if pd.notna(current_row["年紀"]) and str(current_row["年紀"]).strip():
-                try:
-                    default_age = int(float(current_row["年紀"]))
-                except Exception:
-                    default_age = 0
-            else:
-                default_age = 0
-            if pd.notna(current_row["身高"]) and str(current_row["身高"]).strip():
-                try:
-                    default_height = float(current_row["身高"])
-                    if pd.isna(default_height):
-                        default_height = 0.0
-                except Exception:
-                    default_height = 0.0
-            else:
-                default_height = 0.0
-            if pd.notna(current_row["體重"]) and str(current_row["體重"]).strip():
-                try:
-                    default_weight = float(current_row["體重"])
-                    if pd.isna(default_weight):
-                        default_weight = 0.0
-                except Exception:
-                    default_weight = 0.0
-            else:
-                default_weight = 0.0
-            gender_options = ["男", "女", "其他"]
-            # Determine default gender; handle NaN or unknown values
-            if pd.notna(current_row["性別"]) and str(current_row["性別"]).strip() in gender_options:
-                default_gender = str(current_row["性別"]).strip()
-            else:
-                default_gender = gender_options[0]
-            default_gender_index = gender_options.index(default_gender) if default_gender in gender_options else 0
-            with st.form("edit_player_form"):
-                st.markdown(f"**姓名：{edit_name}**")
-                new_birthday = st.date_input(
-                    "生日",
-                    value=default_birthday,
-                    key="edit_birthday",
-                    min_value=date(1925, 1, 1),
-                    max_value=date.today(),
-                )
-                new_height = st.number_input(
-                    "身高 (cm)", min_value=0.0, step=1.0, value=default_height, key="edit_height"
-                )
-                new_gender = st.selectbox(
-                    "性別", gender_options, index=default_gender_index, key="edit_gender"
-                )
-                new_weight = st.number_input(
-                    "體重 (kg)", min_value=0.0, step=1.0, value=default_weight, key="edit_weight"
-                )
-                new_photo = st.file_uploader(
-                    "更新頭像（可選）", type=["jpg", "jpeg", "png"], key="edit_player_photo"
-                )
-                submit_edit = st.form_submit_button("保存修改")
-                if submit_edit:
-                    # Update the DataFrame with new values (convert numbers to strings)
-                    players_df.loc[players_df["球員"] == edit_name, "生日"] = new_birthday.strftime(
-                        "%Y-%m-%d"
-                    )
-                    # Compute age automatically from the updated birthday
-                    today_date = date.today()
-                    age_value = today_date.year - new_birthday.year - (
-                        (today_date.month, today_date.day) < (new_birthday.month, new_birthday.day)
-                    )
-                    players_df.loc[players_df["球員"] == edit_name, "年紀"] = str(age_value) if age_value else ""
-                    players_df.loc[players_df["球員"] == edit_name, "身高"] = (
-                        str(int(new_height)) if new_height else ""
-                    )
-                    players_df.loc[players_df["球員"] == edit_name, "性別"] = new_gender
-                    players_df.loc[players_df["球員"] == edit_name, "體重"] = (
-                        str(int(new_weight)) if new_weight else ""
-                    )
-                    # Save updated players
-                    players_df.to_csv(PLAYERS_FILE, index=False)
-                    # If a new photo is uploaded, save it to replace the existing headshot
-                    if new_photo is not None:
-                        img_path = IMAGE_DIR / f"{edit_name}.jpg"
-                        img_path.write_bytes(new_photo.read())
-                    st.success("✅ 球員資料已更新！")
-    else:
-        st.write("尚未有球員登錄。")
-
-    # Section to remove players
-    st.subheader("移除球員")
-    players_df = load_players_df()
-    if not players_df.empty:
-        names = players_df["球員"].dropna().tolist()
-        to_delete = st.multiselect("選擇要移除的球員", names, key="delete_players")
-        if st.button("移除選定球員"):
-            if to_delete:
-                # Remove selected players from the DataFrame
-                remaining_df = players_df[~players_df["球員"].isin(to_delete)].copy()
-                remaining_df.to_csv(PLAYERS_FILE, index=False)
-                # Remove headshot files for deleted players
-                for del_name in to_delete:
-                    img_path = IMAGE_DIR / f"{del_name}.jpg"
-                    if img_path.exists():
-                        img_path.unlink()
-                st.success("已移除選定的球員：" + ", ".join(to_delete))
-    else:
-        st.write("尚未有球員登錄。")
-
-
+# ========== Main ==========
 def main() -> None:
-    """
-    The primary entry point for the Streamlit app. Provides a sidebar menu
-    for navigating between sections (add records, single-player stats,
-    multi-player trend comparison, batch editing, and data backup).
-    Each page loads the latest data when displayed.
-    """
-    # Configure the page (title, icon, and layout)
-    st.set_page_config(
-        page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide"
-    )
-
-    # Apply a dark, high-tech theme with a monochromatic blue accent
-    st.markdown(
-        """
-        <style>
-        /* Import a mechanical-style font (Orbitron) from Google Fonts */
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
-
-        /* Set global background and text colors for a dark theme */
-        html, body, .stApp {
-            background-color: #0a192f;
-            color: #c8d4e3;
-        }
-
-        /* Style the sidebar with a darker shade and a blue accent border */
-        [data-testid="stSidebar"] {
-            background-color: #112240 !important;
-            border-right: 2px solid #00BFFF !important;
-        }
-
-        /* Increase the sidebar menu text size, apply mechanical font and accent color */
-        [data-testid="stSidebar"] label {
-            font-family: 'Orbitron', sans-serif !important;
-            font-size: 32px !important;
-            font-weight: 600 !important;
-            letter-spacing: 1px;
-            color: #00BFFF !important;
-        }
-
-        /* Input focus glow effect with accent color */
-        input:focus, textarea:focus, select:focus {
-            border-color: #00BFFF !important;
-            box-shadow: 0 0 6px #00BFFF !important;
-            outline: none !important;
-        }
-
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Override the original dark theme with a light grey, high-tech theme. This CSS
-    # is injected after the initial theme to ensure that selectors defined here
-    # take precedence over earlier definitions. It introduces a light grey
-    # background, dark text, and modern Chinese/English fonts.
-    st.markdown(
-        f"""
-        <style>
-        /* Import fonts: Orbitron for English and Noto Sans TC for Chinese (tech aesthetic) */
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
-
-        /* Light grey background and dark text for better readability */
-        html, body, .stApp {{
-            background-color: #f5f7fa;
-            color: #0a192f;
-            font-family: 'Noto Sans TC', 'Orbitron', sans-serif;
-        }}
-
-        /* Style the sidebar with a slightly darker grey and a blue accent border */
-        [data-testid="stSidebar"] {{
-            background-color: #e1e5ee !important;
-            border-right: 2px solid #00BFFF !important;
-        }}
-
-        /* Increase the sidebar menu text size and apply tech fonts and accent color */
-        [data-testid="stSidebar"] label {{
-            font-family: 'Noto Sans TC', 'Orbitron', sans-serif !important;
-            font-size: 40px !important;
-            font-weight: 700 !important;
-            letter-spacing: 1px;
-            color: #00BFFF !important;
-        }}
-
-        /* Input focus glow effect with accent color */
-        input:focus, textarea:focus, select:focus {{
-            border-color: #00BFFF !important;
-            box-shadow: 0 0 6px #00BFFF !important;
-            outline: none !important;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    # Display no title on the main page (title removed as requested)
-
-    # Sidebar for navigation
-    # Display logo at the top of the sidebar if available
+    st.set_page_config(page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide")
     if TEAM_LOGO_FILE.exists():
-        # Display the logo on the sidebar (scaled to 120 px width)
         st.sidebar.image(str(TEAM_LOGO_FILE), width=120)
-    # Radio menu without extra labels
-    page = st.sidebar.radio(
-        "",
-        (
-            "球員登錄",  # put player registration first
-            "新增紀錄",
-            "球員資訊",
-            "多人比較",
-            "登錄修改",
-            "備份資料",
-        ),
-    )
+    page = st.sidebar.radio("", ("球員登錄","新增紀錄","球員資訊","多人比較","登錄修改","備份資料"))
 
-    # Always work with the most up‑to‑date data
-    df = load_data()
+    df = load_data()  # always latest
 
-    # Render the appropriate section based on user selection
     if page == "新增紀錄":
         add_record_section()
     elif page == "球員資訊":
@@ -862,7 +486,6 @@ def main() -> None:
         download_data_section()
     elif page == "球員登錄":
         player_management_section()
-
 
 if __name__ == "__main__":
     main()
