@@ -6,7 +6,7 @@ from datetime import date
 from PIL import Image
 import altair as alt
 
-# ========== Paths (stable next to this file) ==========
+# ===== Paths =====
 BASE_DIR = Path(__file__).parent.resolve()
 DATA_FILE = BASE_DIR / "data.csv"
 PLAYERS_FILE = BASE_DIR / "players.csv"
@@ -29,7 +29,7 @@ else:
             _p[c] = ""
     _p.to_csv(PLAYERS_FILE, index=False)
 
-# ========== Helpers ==========
+# ===== Helpers =====
 def normalize_player_series(s: pd.Series) -> pd.Series:
     if s is None:
         return pd.Series([], dtype="object")
@@ -38,30 +38,26 @@ def normalize_player_series(s: pd.Series) -> pd.Series:
     return s
 
 def normalize_win_col(s: pd.Series) -> pd.Series:
-    """Normalize win indicator to 'Y' or 'N' only."""
     if s is None:
         return pd.Series([], dtype="object")
     s = s.astype(str).str.strip()
-    # Map historical symbols/words to Y/N
     mapping = {
-        "✅ 是": "Y", "是": "Y", "Y": "Y", "y": "Y", "Yes": "Y", "YES": "Y", "true": "Y", "True": "Y",
-        "❌ 否": "N", "否": "N", "N": "N", "n": "N", "No": "N", "NO": "N", "false": "N", "False": "N",
-        "": pd.NA, "nan": pd.NA, "None": pd.NA
+        "✅ 是": "Y","是": "Y","Y": "Y","y": "Y","Yes": "Y","YES": "Y","true": "Y","True": "Y",
+        "❌ 否": "N","否": "N","N": "N","n": "N","No": "N","NO": "N","false": "N","False": "N",
+        "": pd.NA,"nan": pd.NA,"None": pd.NA
     }
     s = s.map(lambda v: mapping.get(v, v))
-    # Anything not Y becomes N if it's not NA
     s = s.where(s.isin(["Y","N"]) | s.isna(), "N")
     return s
 
 def load_data() -> pd.DataFrame:
-    df = pd.read_csv(DATA_FILE, dtype=str)  # read as str, cast later
+    df = pd.read_csv(DATA_FILE, dtype=str)
     for c in RECORD_COLS:
         if c not in df.columns:
             df[c] = pd.NA
     df["球員"] = normalize_player_series(df["球員"])
-    # Normalize win col to Y/N
     df["是否贏球"] = normalize_win_col(df["是否贏球"])
-    for c in ["投籃數", "命中數", "命中率"]:
+    for c in ["投籃數","命中數","命中率"]:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
     df["record_id"] = df["record_id"].astype(str).str.strip()
     df.loc[df["record_id"].isin(["", "nan", "None"]), "record_id"] = pd.NA
@@ -71,7 +67,6 @@ def save_data(df: pd.DataFrame) -> None:
     for c in RECORD_COLS:
         if c not in df.columns:
             df[c] = pd.NA
-    # Ensure win col is Y/N
     df["是否贏球"] = normalize_win_col(df["是否贏球"])
     df = df[RECORD_COLS].copy()
     df.to_csv(DATA_FILE, index=False)
@@ -124,7 +119,7 @@ def compute_monthly_medals(pdf: pd.DataFrame) -> dict:
             medals["銅"] += 1
     return medals
 
-# ========== UI Sections ==========
+# ===== Sections =====
 def add_record_section() -> None:
     st.header("📥 新增紀錄")
     st.markdown(
@@ -146,7 +141,7 @@ def add_record_section() -> None:
             player = st.selectbox("選擇球員", players)
         shots = st.number_input("投籃次數", min_value=0, step=1)
         made = st.number_input("命中次數", min_value=0, step=1)
-        win = st.selectbox("這場是否贏球？", ["Y", "N"])   # <-- Y/N
+        win = st.selectbox("這場是否贏球？", ["Y", "N"])
         submit = st.form_submit_button("新增紀錄")
 
         if submit:
@@ -160,7 +155,7 @@ def add_record_section() -> None:
                     "球員": player,
                     "投籃數": int(shots),
                     "命中數": int(made),
-                    "是否贏球": win,  # already Y/N
+                    "是否贏球": win,
                     "命中率": calc_accuracy(shots, made),
                 }
                 df = pd.concat([df, pd.DataFrame([new])], ignore_index=True)
@@ -187,7 +182,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     total_shots = int(pdf["投籃數"].sum()) if not pdf.empty else 0
     total_made = int(pdf["命中數"].sum()) if not pdf.empty else 0
     acc = calc_accuracy(total_shots, total_made) if not pdf.empty else 0
-    win_rate = (pdf["是否贏球"].eq("Y").sum() / total_games * 100) if total_games else 0  # <-- Y
+    win_rate = (pdf["是否贏球"].eq("Y").sum() / total_games * 100) if total_games else 0
 
     st.write(f"比賽場數：{total_games}")
     st.write(f"總投籃：{total_shots}，命中：{total_made}")
@@ -208,7 +203,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         st.write("體重：" + (f"{show(info.get('體重',''))} kg" if show(info.get('體重',''))!='未填寫' else "未填寫"))
         st.write(f"性別：{show(info.get('性別',''))}")
 
-    # 當日表現
+    # 當日表現（以當日總命中 / 總投籃）
     st.subheader("📅 當日表現")
     if not pdf.empty:
         d = pdf.copy()
@@ -216,7 +211,7 @@ def player_statistics_section(df: pd.DataFrame) -> None:
         d = d.dropna(subset=["日期"])
         if not d.empty:
             agg = (
-                d.assign(贏球=d["是否贏球"].eq("Y").astype(int))  # <-- Y
+                d.assign(贏球=d["是否贏球"].eq("Y").astype(int))
                  .groupby("日期", as_index=False)
                  .agg(當日總投籃=("投籃數","sum"),
                       當日總命中=("命中數","sum"),
@@ -240,15 +235,23 @@ def player_statistics_section(df: pd.DataFrame) -> None:
     else:
         st.write("尚未獲得任何勳章")
 
-    # 趨勢圖
+    # 趨勢圖（以當日總命中 / 總投籃計算）
     if not pdf.empty:
-        g = pdf.groupby("日期")["命中率"].mean().reset_index()
-        g["日期"] = pd.to_datetime(g["日期"], errors="coerce")
-        g = g.dropna(subset=["日期"])
-        if not g.empty:
-            start, end = g["日期"].min(), g["日期"].max()
+        d = pdf.copy()
+        d["日期"] = pd.to_datetime(d["日期"], errors="coerce").dt.date
+        d = d.dropna(subset=["日期"])
+        if not d.empty:
+            daily = (
+                d.groupby("日期", as_index=False)
+                 .agg(投籃數=("投籃數","sum"), 命中數=("命中數","sum"))
+            )
+            daily["命中率"] = daily.apply(
+                lambda r: (r["命中數"]/r["投籃數"]*100) if r["投籃數"] else 0.0, axis=1
+            )
+            daily["日期"] = pd.to_datetime(daily["日期"])
+            start, end = daily["日期"].min(), daily["日期"].max()
             chart = (
-                alt.Chart(g)
+                alt.Chart(daily)
                 .mark_line(point=True)
                 .encode(x=alt.X("日期:T", scale=alt.Scale(domain=[start, end])), y="命中率:Q")
                 .properties(width=600)
@@ -266,26 +269,30 @@ def compare_players_section(df: pd.DataFrame) -> None:
     players.sort()
     chosen = st.multiselect("選擇球員進行比較：", players)
     if chosen:
-        cdf = (
-            df[df["球員"].isin(chosen)]
-            .groupby(["球員","日期"])["命中率"]
-            .mean()
-            .reset_index()
-        )
-        cdf["日期"] = pd.to_datetime(cdf["日期"], errors="coerce")
+        cdf = df[df["球員"].isin(chosen)].copy()
+        cdf["日期"] = pd.to_datetime(cdf["日期"], errors="coerce").dt.date
         cdf = cdf.dropna(subset=["日期"])
         if cdf.empty:
             st.warning("⚠️ 選擇的球員目前沒有任何紀錄，無法比較。")
             return
+        agg = (
+            cdf.groupby(["球員","日期"], as_index=False)
+               .agg(投籃數=("投籃數","sum"), 命中數=("命中數","sum"))
+        )
+        agg["命中率"] = agg.apply(
+            lambda r: (r["命中數"]/r["投籃數"]*100) if r["投籃數"] else 0.0, axis=1
+        )
+        agg["日期"] = pd.to_datetime(agg["日期"])
         st.altair_chart(
-            alt.Chart(cdf).mark_line(point=True).encode(x="日期:T", y="命中率:Q", color="球員:N").properties(width=600),
+            alt.Chart(agg).mark_line(point=True)
+                .encode(x="日期:T", y="命中率:Q", color="球員:N")
+                .properties(width=600),
             use_container_width=True
         )
 
 def edit_records_section(df: pd.DataFrame) -> None:
     st.header("✏️ 登錄修改")
 
-    # 批次修改（有紀錄時才顯示）
     if df.empty:
         st.info("沒有紀錄可修改")
     else:
@@ -294,15 +301,9 @@ def edit_records_section(df: pd.DataFrame) -> None:
         players.sort()
         pick = st.selectbox("選擇球員進行修改：", players) if players else None
 
-        if pick:
-            sub = df[df["球員"] == pick].copy()
-        else:
-            sub = df.copy()
-
-        # 移除命中率欄位供編輯，避免誤改；儲存時自動重算
+        sub = df[df["球員"] == pick].copy() if pick else df.copy()
         editable = sub.drop(columns=["命中率"]).copy()
 
-        # 讓 record_id 只讀，避免被刪改
         try:
             col_cfg = {"record_id": st.column_config.TextColumn("record_id", disabled=True)}
         except Exception:
@@ -314,34 +315,27 @@ def edit_records_section(df: pd.DataFrame) -> None:
         )
 
         if st.button("💾 儲存全部修改"):
-            # 轉型 & 計算命中率 & 規一化贏球欄
             edited["投籃數"] = pd.to_numeric(edited["投籃數"], errors="coerce").fillna(0).astype(int)
             edited["命中數"] = pd.to_numeric(edited["命中數"], errors="coerce").fillna(0).astype(int)
             edited["record_id"] = edited["record_id"].astype(str).str.strip()
-            # 規一化 Y/N
             edited["是否贏球"] = normalize_win_col(edited["是否贏球"])
             edited["命中率"] = edited.apply(lambda r: calc_accuracy(r["投籃數"], r["命中數"]), axis=1)
 
-            full = load_data()  # 重新讀最新資料
+            full = load_data()
             full["record_id"] = full["record_id"].astype(str).str.strip()
 
             if pick:
-                # ① 先把該球員原本的紀錄整批移除（讓刪除真正生效）
                 full = full[full["球員"] != pick].copy()
-                # ② 再把編輯後（保留下來）的紀錄加入回去
-                edited["球員"] = pick  # 確保球員名一致
+                edited["球員"] = pick
                 full = pd.concat([full, edited], ignore_index=True, sort=False)
             else:
-                # 沒挑球員：以保留的 record_id 為準，刪除不在 edited 的列
                 keep_ids = set(edited["record_id"].dropna().tolist())
                 full = full[full["record_id"].isin(keep_ids)].copy()
-                # 更新保留列
                 full = full.set_index("record_id")
                 edited = edited.set_index("record_id")
                 full.update(edited)
                 full = full.reset_index()
 
-            # 最後確保欄位順序與 Y/N 格式
             for c in RECORD_COLS:
                 if c not in full.columns:
                     full[c] = pd.NA
@@ -349,9 +343,9 @@ def edit_records_section(df: pd.DataFrame) -> None:
             full = full[RECORD_COLS]
 
             save_data(full)
-            st.success("✅ 所有修改已儲存（包含刪除），且贏球欄統一為 Y/N。")
+            st.success("✅ 所有修改已儲存（包含刪除），且贏球欄為 Y/N。")
 
-    # 修改球員資料（永遠顯示）
+    # 修改球員資料
     st.subheader("🔧 修改球員基本資料")
     pdf = load_players_df()
     if not pdf.empty:
@@ -359,49 +353,52 @@ def edit_records_section(df: pd.DataFrame) -> None:
         opts = [str(x) for x in opts]
         opts.sort()
         who = st.selectbox("選擇要修改的球員", opts, key="edit_player_select_batch")
-        if who:
-            row = pdf[pdf["球員"] == who].iloc[0]
-            try:
-                default_birthday = date.fromisoformat(str(row.get("生日",""))) if str(row.get("生日","")) else date.today()
-            except Exception:
-                default_birthday = date.today()
-
-            def _f(v, d=0.0):
-                try:
-                    if pd.isna(v) or str(v).strip()=="":
-                        return d
-                    return float(v)
-                except Exception:
-                    return d
-            h_def = _f(row.get("身高",0.0))
-            w_def = _f(row.get("體重",0.0))
-            gender_opts = ["男","女","其他"]
-            g_def = str(row.get("性別","男")) if str(row.get("性別","")).strip() in gender_opts else "男"
-
-            with st.form("edit_player_form_batch"):
-                st.markdown(f"**姓名：{who}**")
-                new_bd = st.date_input("生日", value=default_birthday, min_value=date(1925,1,1), max_value=date.today())
-                new_h = st.number_input("身高 (cm)", min_value=0.0, step=1.0, value=h_def)
-                new_g = st.selectbox("性別", gender_opts, index=gender_opts.index(g_def))
-                new_w = st.number_input("體重 (kg)", min_value=0.0, step=1.0, value=w_def)
-                new_photo = st.file_uploader("更新頭像（可選）", type=["jpg","jpeg","png"])
-                ok = st.form_submit_button("保存球員修改")
-                if ok:
-                    pdf.loc[pdf["球員"] == who, "生日"] = new_bd.strftime("%Y-%m-%d")
-                    t = date.today()
-                    age = t.year - new_bd.year - ((t.month, t.day) < (new_bd.month, new_bd.day))
-                    pdf.loc[pdf["球員"] == who, "年紀"] = str(age) if age >= 0 else ""
-                    pdf.loc[pdf["球員"] == who, "身高"] = str(int(new_h)) if new_h else ""
-                    pdf.loc[pdf["球員"] == who, "性別"] = new_g
-                    pdf.loc[pdf["球員"] == who, "體重"] = str(int(new_w)) if new_w else ""
-                    save_players_df(pdf)
-                    if new_photo is not None:
-                        (IMAGE_DIR / f"{who}.jpg").write_bytes(new_photo.read())
-                    st.success("✅ 球員資料已更新！")
     else:
-        st.write("尚未有球員登錄。")
+        who = None
 
-    # 移除球員（永遠顯示）
+    if pdf.empty:
+        st.write("尚未有球員登錄。")
+    elif who:
+        row = pdf[pdf["球員"] == who].iloc[0]
+        try:
+            default_birthday = date.fromisoformat(str(row.get("生日",""))) if str(row.get("生日","")) else date.today()
+        except Exception:
+            default_birthday = date.today()
+
+        def _f(v, d=0.0):
+            try:
+                if pd.isna(v) or str(v).strip()=="":
+                    return d
+                return float(v)
+            except Exception:
+                return d
+        h_def = _f(row.get("身高",0.0))
+        w_def = _f(row.get("體重",0.0))
+        gender_opts = ["男","女","其他"]
+        g_def = str(row.get("性別","男")) if str(row.get("性別","")).strip() in gender_opts else "男"
+
+        with st.form("edit_player_form_batch"):
+            st.markdown(f"**姓名：{who}**")
+            new_bd = st.date_input("生日", value=default_birthday, min_value=date(1925,1,1), max_value=date.today())
+            new_h = st.number_input("身高 (cm)", min_value=0.0, step=1.0, value=h_def)
+            new_g = st.selectbox("性別", gender_opts, index=gender_opts.index(g_def))
+            new_w = st.number_input("體重 (kg)", min_value=0.0, step=1.0, value=w_def)
+            new_photo = st.file_uploader("更新頭像（可選）", type=["jpg","jpeg","png"])
+            ok = st.form_submit_button("保存球員修改")
+            if ok:
+                pdf.loc[pdf["球員"] == who, "生日"] = new_bd.strftime("%Y-%m-%d")
+                t = date.today()
+                age = t.year - new_bd.year - ((t.month, t.day) < (new_bd.month, new_bd.day))
+                pdf.loc[pdf["球員"] == who, "年紀"] = str(age) if age >= 0 else ""
+                pdf.loc[pdf["球員"] == who, "身高"] = str(int(new_h)) if new_h else ""
+                pdf.loc[pdf["球員"] == who, "性別"] = new_g
+                pdf.loc[pdf["球員"] == who, "體重"] = str(int(new_w)) if new_w else ""
+                save_players_df(pdf)
+                if new_photo is not None:
+                    (IMAGE_DIR / f"{who}.jpg").write_bytes(new_photo.read())
+                st.success("✅ 球員資料已更新！")
+
+    # 移除球員
     st.subheader("🗑️ 移除球員")
     pdf = load_players_df()
     if not pdf.empty:
@@ -465,14 +462,13 @@ def player_management_section() -> None:
                 st.success("✅ 成功新增球員！")
     st.info("如需修改或刪除球員，請前往『登錄修改』頁面。")
 
-# ========== Main ==========
+# ===== Main =====
 def main() -> None:
     st.set_page_config(page_title="🏀 籃球比賽紀錄系統", page_icon="🏀", layout="wide")
     if TEAM_LOGO_FILE.exists():
         st.sidebar.image(str(TEAM_LOGO_FILE), width=120)
     page = st.sidebar.radio("", ("球員登錄","新增紀錄","球員資訊","多人比較","登錄修改","備份資料"))
-
-    df = load_data()  # always latest
+    df = load_data()
 
     if page == "新增紀錄":
         add_record_section()
